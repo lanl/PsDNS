@@ -1,2 +1,9 @@
+# Backup files
 *~
+
+# Python generated files
+*.pyc
 __pycache__
+
+# Documentation builds
+/doc/_build
