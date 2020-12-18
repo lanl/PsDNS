@@ -12,14 +12,15 @@
 #
 import os
 import sys
-sys.path.insert(0, '/Users/dmi1/src/psdns/psdns')
+sys.path.insert(0, '../../psdns')
 
 
 # -- Project information -----------------------------------------------------
 
-project = 'psdns'
-copyright = '2020, Author'
-author = 'Author'
+project = 'PsFDpy'
+copyright = '2020'
+author = 'Daniel M. Israel'
+version = '0.1'
 
 
 # -- General configuration ---------------------------------------------------
@@ -30,7 +31,6 @@ author = 'Author'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
-    'sphinx.ext.todo',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -55,6 +55,9 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # a list of builtin themes.
 #
 html_theme = 'alabaster'
+html_theme_options = {
+    'show_relbars': True
+    }
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -64,7 +67,7 @@ html_static_path = ['_static']
 
 # -- Extension configuration -------------------------------------------------
 
-# -- Options for todo extension ----------------------------------------------
+# -- Options for autodoc extension -------------------------------------------
 
-# If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = True
+autoclass_content = 'both'
+autodoc_member_order = 'groupwise'

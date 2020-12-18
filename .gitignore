@@ -6,4 +6,4 @@
 __pycache__
 
 # Documentation builds
-/doc/_build
+/doc/build

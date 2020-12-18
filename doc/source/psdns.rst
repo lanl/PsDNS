@@ -4,7 +4,6 @@ psdns package
 .. automodule:: psdns
    :members:
    :undoc-members:
-   :show-inheritance:
 
 Submodules
 ----------
