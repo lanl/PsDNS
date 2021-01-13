@@ -6,7 +6,7 @@ the PDEs.
 import sys
 from time import time as walltime
 
-import mpi4py
+#import mpi4py
 
 
 class Integrator(object):
@@ -39,8 +39,9 @@ class Integrator(object):
         while self.time<self.tfinal-1e-8:
             self.step()
             self.diagnostics(self.time, self.uhat)
-        self.runtime = mpi4py.MPI.COMM_WORLD.reduce(walltime()-time0)
-
+        #self.runtime = mpi4py.MPI.COMM_WORLD.reduce(walltime()-time0)
+        self.runtime = walltime()-time0
+        
     def step(self):
         """Advance a single timestep
         """

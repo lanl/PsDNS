@@ -1,4 +1,3 @@
-import mpi4py
 import numpy
 
 from .bases import FFT
@@ -22,7 +21,7 @@ class HomogeneousDecay(Diagnostics, FFT):
 
     def rhs(self):
         for i in range(3):
-            self.to_physical(self.uhat[i], self.u[i])
+            self.u[i] = self.to_physical(self.uhat[i])
 
         # Compute du/dx in physical space
         self.curl(self.uhat, self.vorticity)
@@ -77,5 +76,5 @@ class TaylorGreenIC(object):
         self.u[2] = C*numpy.sin(a*self.x[0])*numpy.sin(b*self.x[1])*numpy.cos(c*self.x[2])
 
         for i in range(3):
-            self.to_spectral(self.u[i], self.uhat[i])
+            self.uhat[i] = self.to_spectral(self.u[i])
         
