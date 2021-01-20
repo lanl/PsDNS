@@ -7,6 +7,7 @@ import sys
 from time import time as walltime
 
 #import mpi4py
+from .bases import SpectralArray
 
 
 class Integrator(object):
@@ -50,8 +51,7 @@ class Integrator(object):
     def print_statistics(self):
         """Print run statistics
         """
-        if self.rank == 0:
-            print("Total compute time = ", self.runtime, file=sys.stderr)
+        print("Total compute time = ", self.runtime, file=sys.stderr)
 
 
 class Euler(Integrator):
@@ -100,9 +100,9 @@ class RungeKutta(Integrator):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         #: First intermediate storage array
-        self.uhat0 = self.spectral_array(rank=1)
+        self.uhat0 = SpectralArray(self.uhat.shape[:1], self.u.k, self.u.x)
         #: Second intermediate storage array
-        self.uhat1 = self.spectral_array(rank=1)        
+        self.uhat1 = SpectralArray(self.uhat.shape[:1], self.u.k, self.u.x)
     
     def step(self):
         # I believe the U1 assignment is unnecessary

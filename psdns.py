@@ -22,8 +22,8 @@ solver = Solver(
     dt=0.01,
     tfinal=10.0,
     tdump=0.1,
-    Re=1600,
-    N=2**7,
+    Re=400,
+    N=2**6,
     )
 solver.run()
 solver.print_statistics()

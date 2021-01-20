@@ -1,5 +1,6 @@
 import numpy
 
+from .bases import SpectralArray
 
 class Diagnostics:
     def __init__(self, tdump, **kwargs):
@@ -11,8 +12,8 @@ class Diagnostics:
         if time-self.lastdump<self.tdump-1e-8:
             return
         
-        tke = self.spectral_norm(uhat)
-        eps = [ self.spectral_norm(1j*self.k[i]*uhat[j])
+        tke = uhat.norm()
+        eps = [ SpectralArray(1j*uhat.k[i]*uhat[j], uhat.k, uhat.x).norm()
                 for i in range(3) for j in range(3) ]
         # G = [ self.spectral_norm(-self.k[j]*self.k[l]*uhat[i])
         #       for i in range(3) for j in range(3)
@@ -29,7 +30,7 @@ class Diagnostics:
         #        for l in range(3) for m in range(3)
         #        for n in range(3) for o in range(3) ]
 
-        if self.rank == 0:
+        if True: #self.rank == 0:
             print(
                 time,
                 0.5*tke,
