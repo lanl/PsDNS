@@ -1,10 +1,9 @@
 import numpy
 
-from .bases import spectral_grid, PhysicalArray, SpectralArray
-from .diagnostics import Diagnostics
+from .bases import spectral_grid, PhysicalArray
 
 
-class HomogeneousDecay(Diagnostics):
+class HomogeneousDecay(object):
     def __init__(self, Re, N, **kwargs):
         super().__init__(**kwargs)
 

@@ -11,19 +11,22 @@ DNS code of Mortensen and Langtangen, which can be found `here
 """
 import sys
 
-from psdns.solvers import HomogeneousDecay, TaylorGreenIC
+from psdns.diagnostics import StandardDiagnostics
 from psdns.integrators import RungeKutta
+from psdns.solvers import HomogeneousDecay, TaylorGreenIC
 
 
-class Solver(RungeKutta, TaylorGreenIC, HomogeneousDecay):
+class Equations(TaylorGreenIC, HomogeneousDecay, StandardDiagnostics):
     pass
 
-solver = Solver(
+solver = RungeKutta(
     dt=0.01,
-    tfinal=10.0,
-    tdump=0.1,
-    Re=400,
-    N=2**6,
+    tfinal=0.1,
+    equations=Equations(
+        Re=400,
+        N=3*2**5,
+        tdump=0.1,
+        ),
     )
 solver.run()
 solver.print_statistics()

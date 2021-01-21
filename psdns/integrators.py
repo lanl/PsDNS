@@ -6,9 +6,6 @@ the PDEs.
 import sys
 from time import time as walltime
 
-#import mpi4py
-from .bases import SpectralArray
-
 
 class Integrator(object):
     """Base class for integrators
@@ -18,13 +15,13 @@ class Integrator(object):
     shoud override the :meth:`step` method to implement the time
     advancement scheme.
     """
-    def __init__(self, dt, tfinal, **kwargs):
+    def __init__(self, equations, dt, tfinal):
         """Initialize an Integrator
 
         :params real dt: The timestep
         :params real tfinal: The simulation stop time
         """
-        super().__init__(**kwargs)
+        self.equations = equations
         #: Timestep
         self.dt = dt
         #: Simulation stop time
@@ -35,11 +32,11 @@ class Integrator(object):
     def run(self):
         """Run a simulations to completion
         """
-        self.diagnostics(self.time, self.uhat)
+        self.equations.diagnostics(self.time, self.equations.uhat)
         time0 = walltime()
         while self.time<self.tfinal-1e-8:
             self.step()
-            self.diagnostics(self.time, self.uhat)
+            self.equations.diagnostics(self.time, self.equations.uhat)
         #self.runtime = mpi4py.MPI.COMM_WORLD.reduce(walltime()-time0)
         self.runtime = walltime()-time0
         
@@ -100,17 +97,17 @@ class RungeKutta(Integrator):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         #: First intermediate storage array
-        self.uhat0 = SpectralArray(self.uhat.shape[:1], self.u.k, self.u.x)
+        self.uhat0 = self.equations.uhat.copy()
         #: Second intermediate storage array
-        self.uhat1 = SpectralArray(self.uhat.shape[:1], self.u.k, self.u.x)
+        self.uhat1 = self.equations.uhat.copy()
     
     def step(self):
         # I believe the U1 assignment is unnecessary
-        self.uhat1[...] = self.uhat0[...] = self.uhat
+        self.uhat1[...] = self.uhat0[...] = self.equations.uhat
         self.time += self.dt            
         for a, b in zip(self.a, self.b):
-            self.dU = self.rhs()
+            self.dU = self.equations.rhs()
             if b:
-                self.uhat[...] = self.uhat0 + b*self.dt*self.dU
+                self.equations.uhat[...] = self.uhat0 + b*self.dt*self.dU
             self.uhat1 += a*self.dt*self.dU
-        self.uhat[...] = self.uhat1
+        self.equations.uhat[...] = self.uhat1

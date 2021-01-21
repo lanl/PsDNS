@@ -1,8 +1,7 @@
 import numpy
 
-from .bases import SpectralArray
 
-class Diagnostics:
+class StandardDiagnostics(object):
     def __init__(self, tdump, **kwargs):
         super().__init__(**kwargs)
         self.tdump = tdump
@@ -13,7 +12,7 @@ class Diagnostics:
             return
         
         tke = uhat.norm()
-        eps = [ SpectralArray(1j*uhat.k[i]*uhat[j], uhat.k, uhat.x).norm()
+        eps = [ (1j*uhat.k[i]*uhat[j]).norm()
                 for i in range(3) for j in range(3) ]
         # G = [ self.spectral_norm(-self.k[j]*self.k[l]*uhat[i])
         #       for i in range(3) for j in range(3)
