@@ -21,10 +21,11 @@ class Equations(TaylorGreenIC, HomogeneousDecay, StandardDiagnostics):
 
 solver = RungeKutta(
     dt=0.01,
-    tfinal=0.1,
+    tfinal=10.0,
     equations=Equations(
         Re=400,
-        N=3*2**5,
+        N=2**6,
+        padding=1.5,
         tdump=0.1,
         ),
     )

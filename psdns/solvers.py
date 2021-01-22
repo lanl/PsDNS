@@ -4,13 +4,13 @@ from .bases import spectral_grid, PhysicalArray
 
 
 class HomogeneousDecay(object):
-    def __init__(self, Re, N, **kwargs):
+    def __init__(self, Re, N, padding, **kwargs):
         super().__init__(**kwargs)
 
         self.Re = Re
         self.nu = 1/Re
 
-        k, x = spectral_grid(N)
+        k, x = spectral_grid(N, padding)
         self.u = PhysicalArray([3,], k, x)
         self.k2 = numpy.sum(k*k, axis=0)
         self.P = (numpy.eye(3)[:,:,None,None,None]

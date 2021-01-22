@@ -35,8 +35,8 @@ def spectral_grid(N, padding=1):
     x = (2*numpy.pi/Nx)*numpy.mgrid[:Nx,:Nx,:Nx]
     k = numpy.mgrid[:N,:N,:N//2+1]
     # Note, use sample spacing/2pi to get radial frequencies, rather than circular frequencies.
-    fftfreq = numpy.fft.fftfreq(N, 1/N)
-    rfftfreq = numpy.fft.rfftfreq(N, 1/N)
+    fftfreq = numpy.fft.fftfreq(Nx, 1/Nx)[[*range(0, (N+1)//2), *range(-(N//2), 0)]]
+    rfftfreq = numpy.fft.rfftfreq(Nx, 1/Nx)[:N//2+1]
     #: The spectral wave number coordinates of the local array
     k = numpy.array( [
         fftfreq[k[0]],
@@ -76,11 +76,14 @@ class PhysicalArray(numpy.ndarray):
         self.x = getattr(obj, 'x', None)
 
     def to_spectral(self):
+        # Index array which picks out retained modes in a complex transform
+        N = self.k.shape[1]
+        i = numpy.array([*range(0, (N+1)//2), *range(-(N//2), 0)])
         return SpectralArray(
             numpy.fft.rfftn(
                 self,
                 s=self.x.shape[1:],
-                ), # Need to add downselect for padding
+                )[...,i[:,numpy.newaxis],i,:N//2+1],
             self.k,
             self.x
             )/self.x[0].size
@@ -113,9 +116,16 @@ class SpectralArray(numpy.ndarray):
         self.x = getattr(obj, 'x', None)
 
     def to_physical(self):
+        N = self.k.shape[1]
+        i = numpy.array([*range(0, (N+1)//2), *range(-(N//2), 0)])
+        s = numpy.zeros(
+            shape = list(self.shape[:-3]) + list(self.x.shape[1:]),
+            dtype = complex
+            )
+        s[...,i[:,numpy.newaxis],i,:N//2+1] = self
         return PhysicalArray(
             numpy.fft.irfftn(
-                self,
+                s,
                 s=self.x.shape[1:],
                 ),
             self.k,
