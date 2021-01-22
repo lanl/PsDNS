@@ -132,6 +132,9 @@ class SpectralArray(numpy.ndarray):
             self.x
             )*self.x[0].size
 
+    def grad(self):
+        return 1j*self[...,numpy.newaxis,:,:,:]*self.k
+    
     def curl(self):
         """Curl of a spectral variable, in physical space.
         """
@@ -140,7 +143,7 @@ class SpectralArray(numpy.ndarray):
             self.k,
             self.x
             )
-    
+
     def norm(self):
         """Return the L2 norm of a spectral array.
         """

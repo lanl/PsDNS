@@ -33,13 +33,9 @@ class HomogeneousDecaySmagorinsky(HomogeneousDecay):
         self.nu_t = 0
         
     def rhs(self):
-        SijSij = \
-            [ (-1j*self.uhat.k[i]*self.uhat[i]).norm()
-              for i in range(3) ] + \
-            [ (-1j*self.uhat.k[0]*self.uhat[1]-1j*self.uhat.k[1]*self.uhat[0]).norm(),
-              (-1j*self.uhat.k[0]*self.uhat[2]-1j*self.uhat.k[2]*self.uhat[0]).norm(),
-              (-1j*self.uhat.k[1]*self.uhat[2]-1j*self.uhat.k[2]*self.uhat[1]).norm(), ]
-        SijSij = sum(SijSij)
+        gradu = self.uhat.grad()
+        SijSij = (gradu + gradu.transpose(1,0,2,3,4))/2
+        SijSij = sum([ SijSij[i,j].norm() for i in range(3) for j in range(3) ])
         self.nu_t = (self.Cs*self.dx)**2*numpy.sqrt(2*SijSij)
         self.nu = 1/self.Re + self.nu_t
 
