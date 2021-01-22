@@ -56,7 +56,7 @@ class Euler(Integrator):
     """
     def step(self):
         self.time += self.dt
-        self.uhat += self.dt*self.rhs()
+        self.equations.uhat += self.dt*self.equations.rhs()
         
 
 class RungeKutta(Integrator):
