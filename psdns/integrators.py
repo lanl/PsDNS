@@ -102,7 +102,6 @@ class RungeKutta(Integrator):
         self.uhat1 = self.equations.uhat.copy()
     
     def step(self):
-        # I believe the U1 assignment is unnecessary
         self.uhat1[...] = self.uhat0[...] = self.equations.uhat
         self.time += self.dt            
         for a, b in zip(self.a, self.b):
