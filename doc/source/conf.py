@@ -70,4 +70,4 @@ html_static_path = ['_static']
 # -- Options for autodoc extension -------------------------------------------
 
 autoclass_content = 'both'
-autodoc_member_order = 'groupwise'
+autodoc_member_order = 'bysource'

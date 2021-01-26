@@ -11,7 +11,7 @@ class StandardDiagnostics(object):
         if time-self.lastdump<self.tdump-1e-8:
             return
         
-        tke = uhat.norm()
+        tke = uhat[:3].norm()
         eps = [ (1j*uhat.k[i]*uhat[j]).norm()
                 for i in range(3) for j in range(3) ]
         # G = [ self.spectral_norm(-self.k[j]*self.k[l]*uhat[i])
