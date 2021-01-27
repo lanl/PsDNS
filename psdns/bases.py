@@ -29,18 +29,21 @@ There are three scenarios for creating a SpectralArray or PhysicalArray.
 def spectral_grid(N, padding=1):
     # To do:
     #   1. Arguments for domain size
-    #   2. Allow array arguments
     #   3. Support for 1, 2, or 3-d.
-    Nx = int(N*padding)
-    x = (2*numpy.pi/Nx)*numpy.mgrid[:Nx,:Nx,:Nx]
-    k = numpy.mgrid[:N,:N,:N//2+1]
+    N = numpy.broadcast_to(numpy.atleast_1d(N), (3,))
+    padding = numpy.broadcast_to(numpy.atleast_1d(padding), (3,))
+    xdims = (N*padding).astype(int)
+    x = (2*numpy.pi/xdims[:,numpy.newaxis,numpy.newaxis,numpy.newaxis,]) \
+      *numpy.mgrid[:xdims[0],:xdims[1],:xdims[2]]
+    k = numpy.mgrid[:N[0],:N[1],:N[2]//2+1]
     # Note, use sample spacing/2pi to get radial frequencies, rather than circular frequencies.
-    fftfreq = numpy.fft.fftfreq(Nx, 1/Nx)[[*range(0, (N+1)//2), *range(-(N//2), 0)]]
-    rfftfreq = numpy.fft.rfftfreq(Nx, 1/Nx)[:N//2+1]
+    fftfreq0 = numpy.fft.fftfreq(xdims[0], 1/xdims[0])[[*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)]]
+    fftfreq1 = numpy.fft.fftfreq(xdims[1], 1/xdims[1])[[*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)]]
+    rfftfreq = numpy.fft.rfftfreq(xdims[2], 1/xdims[2])[:N[2]//2+1]
     #: The spectral wave number coordinates of the local array
     k = numpy.array( [
-        fftfreq[k[0]],
-        fftfreq[k[1]],
+        fftfreq0[k[0]],
+        fftfreq1[k[1]],
         rfftfreq[k[2]]
         ] )
     return k, x
@@ -77,13 +80,14 @@ class PhysicalArray(numpy.ndarray):
 
     def to_spectral(self):
         # Index array which picks out retained modes in a complex transform
-        N = self.k.shape[1]
-        i = numpy.array([*range(0, (N+1)//2), *range(-(N//2), 0)])
+        N = self.k.shape[1:]
+        i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
+        i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
         return SpectralArray(
             numpy.fft.rfftn(
                 self,
                 s=self.x.shape[1:],
-                )[...,i[:,numpy.newaxis],i,:N//2+1],
+                )[...,i0[:,numpy.newaxis],i1,:N[2]],
             self.k,
             self.x
             )/self.x[0].size
@@ -116,13 +120,14 @@ class SpectralArray(numpy.ndarray):
         self.x = getattr(obj, 'x', None)
 
     def to_physical(self):
-        N = self.k.shape[1]
-        i = numpy.array([*range(0, (N+1)//2), *range(-(N//2), 0)])
+        N = self.k.shape[1:]
+        i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
+        i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
         s = numpy.zeros(
             shape = list(self.shape[:-3]) + list(self.x.shape[1:]),
             dtype = complex
             )
-        s[...,i[:,numpy.newaxis],i,:N//2+1] = self
+        s[...,i0[:,numpy.newaxis],i1,:N[2]] = self
         return PhysicalArray(
             numpy.fft.irfftn(
                 s,
