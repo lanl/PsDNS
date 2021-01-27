@@ -1,3 +1,5 @@
+import warnings
+
 import numpy
 
 from .bases import spectral_grid, PhysicalArray, SpectralArray
@@ -278,8 +280,19 @@ class KEpsilon(NavierStokes):
     def rhs(self):
         K = self.uhat[3].to_physical()
         epsilon = self.uhat[4].to_physical()
+        if numpy.amin(K) <= 0:
+            warnings.warn("negative K: clipping to 1e-12")
+            K = K.clip(1e-12)
+            self.uhat[3] = K.to_spectral()
+        if numpy.amin(epsilon) <= 0:
+            warnings.warn("negative epsilon: clipping to 1e-12")
+            K = K.clip(1e-12)
+            epsilon = epsilon.clip(1e-12)
+            self.uhat[3] = K.to_spectral()
+            self.uhat[4] = epsilon.to_spectral()
+
         nu_t = self.Cmu*K**2/epsilon
-        
+
         # Momentum equation
         u = self.uhat[:3].to_physical()
         gradu = self.uhat[:3].grad().to_physical()
