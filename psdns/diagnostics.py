@@ -5,9 +5,10 @@ import numpy
 
 
 class Diagnostics(object):
-    def __init__(self, tdump):
+    def __init__(self, tdump, outfile=sys.stderr):
         self.tdump = tdump
         self.lastdump = -1e9
+        self.outfile = outfile if hasattr(outfile, 'write') else open(outfile, 'w')
         
     def __call__(self, time, equations, uhat):
         if time-self.lastdump<self.tdump-1e-8:
@@ -28,7 +29,7 @@ class StandardDiagnostics(Diagnostics):
             ]
 
         self.writer = csv.DictWriter(
-            sys.stdout,
+            self.outfile,
             [ 'time', ] + [ field[0] for field in self.fields ]
             )
         self.writer.writeheader()
@@ -78,3 +79,25 @@ class StandardDiagnostics(Diagnostics):
                 label: func(equations, uhat) for label, func in self.fields
                 })
             )
+        self.outfile.flush()
+
+
+class Spectra(Diagnostics):
+    def diagnostic(self, time, equations, uhat):
+        kmag = numpy.sqrt(numpy.sum(uhat.k**2, axis=0))
+        kmax = numpy.amax(kmag)
+        nbins = max(kmag.shape)/2
+        dk = kmax/nbins
+        wavenumbers = dk*numpy.arange(nbins+1)
+        spectrum = numpy.zeros([nbins+1, 3])
+        ispectrum = numpy.zeros([nbins+1], dtype=int)
+        
+        for k, u in numpy.nditer([kmag, (uhat[:3]*uhat[:3].conjugate()).real]):
+            spectrum[int(k/dk)] += u
+            ispectrum[int(k/dk)] += 1
+        spectrum *= 4*numpy.pi*(wavenumbers**2/ispectrum)[:,numpy.newaxis]
+        
+        for i, s in zip(wavenumbers, spectrum):
+            self.outfile.write("{} {}\n".format(i, sum(s)))
+        self.outfile.write("\n\n")
+        self.outfile.flush()

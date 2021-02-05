@@ -3,7 +3,7 @@
 A simple psuedo-spectral DNS for the TGV, corresponding to the results
 of Brachet, et al. (1983). 
 """
-from psdns.diagnostics import StandardDiagnostics
+from psdns.diagnostics import StandardDiagnostics, Spectra
 from psdns.integrators import RungeKutta
 from psdns.solvers import NavierStokes, TaylorGreenIC
 
@@ -20,7 +20,10 @@ solver = RungeKutta(
         N=2**8,
         padding=1.5,
         ),
-    diagnostics=[StandardDiagnostics(tdump=0.1)],
+    diagnostics=[
+        StandardDiagnostics(tdump=0.1, outfile="tgv.dat"),
+        Spectra(tdump=1.0, outfile="spectra.dat"),
+        ],
     )
 solver.run()
 solver.print_statistics()
