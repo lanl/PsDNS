@@ -278,6 +278,7 @@ class KEpsilon(NavierStokes):
 
 
     def rhs(self):
+        # Clipping
         K = self.uhat[3].to_physical()
         epsilon = self.uhat[4].to_physical()
         if numpy.amin(K) <= 0:
@@ -305,7 +306,7 @@ class KEpsilon(NavierStokes):
 
         # Turbulent prodution
         Sij = ((gradu + gradu.transpose(1,0,2,3,4))/2)
-        P = nu_t*numpy.sum(Sij*Sij, axis=(0,1))
+        P = 2*nu_t*numpy.sum(Sij*Sij, axis=(0,1))
 
         # K equation
         gradk = self.uhat[3].grad().to_physical()
