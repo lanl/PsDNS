@@ -15,7 +15,7 @@ class Integrator(object):
     shoud override the :meth:`step` method to implement the time
     advancement scheme.
     """
-    def __init__(self, equations, dt, tfinal):
+    def __init__(self, equations, dt, tfinal, diagnostics):
         """Initialize an Integrator
 
         :params real dt: The timestep
@@ -28,15 +28,20 @@ class Integrator(object):
         self.tfinal = tfinal
         #: Current simulation time
         self.time = 0
+        self.diagnostics_list = diagnostics
+
+    def diagnostics(self):
+        for diagnostic in self.diagnostics_list:
+            diagnostic(self.time, self.equations, self.equations.uhat)
         
     def run(self):
         """Run a simulations to completion
         """
-        self.equations.diagnostics(self.time, self.equations.uhat)
+        self.diagnostics()
         time0 = walltime()
         while self.time<self.tfinal-1e-8:
             self.step()
-            self.equations.diagnostics(self.time, self.equations.uhat)
+            self.diagnostics()
         #self.runtime = mpi4py.MPI.COMM_WORLD.reduce(walltime()-time0)
         self.runtime = walltime()-time0
         

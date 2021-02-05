@@ -8,7 +8,7 @@ from psdns.integrators import RungeKutta
 from psdns.solvers import NavierStokes, TaylorGreenIC
 
 
-class Equations(NavierStokes, TaylorGreenIC, StandardDiagnostics):
+class Equations(NavierStokes, TaylorGreenIC):
     pass
 
 
@@ -19,8 +19,8 @@ solver = RungeKutta(
         Re=400,
         N=2**8,
         padding=1.5,
-        tdump=0.1,
         ),
+    diagnostics=[StandardDiagnostics(tdump=0.1)],
     )
 solver.run()
 solver.print_statistics()
