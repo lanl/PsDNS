@@ -8,6 +8,7 @@ import numpy
 from numpy import testing as nptest
 
 
+from psdns.diagnostics import Diagnostics
 from psdns.integrators import RungeKutta
 from psdns.solvers import NavierStokes, TaylorGreenIC
 
@@ -89,19 +90,18 @@ brachet_data = numpy.array([
 
 
 class Equations(NavierStokes, TaylorGreenIC):
-    def __init__(self, tdump, **kwargs):
+    pass
+
+
+class TestDiagnostics(Diagnostics):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.tdump = tdump
-        self.lastdump = -1e9
         self.dumps = []
     
-    def diagnostics(self, time, uhat):
-        if time-self.lastdump<self.tdump-1e-8:
-            return
+    def diagnostic(self, time, equations, uhat):
         eps = [ (1j*uhat.k[i]*uhat[j]).norm()
                 for i in range(3) for j in range(3) ]
-        self.dumps.append( [ time, self.nu*sum(eps) ] )
-        self.lastdump = time
+        self.dumps.append( [ time, equations.nu*sum(eps) ] )
 
 
 class TestDNS(unittest.TestCase):
@@ -120,11 +120,13 @@ class TestDNS(unittest.TestCase):
                 Re=100,
                 N=2**4,
                 padding=1.5,
-                tdump=0.1,
             ),
+            diagnostics=[
+                TestDiagnostics(tdump=0.1)
+                ]
         )
         solver.run()
-        output = numpy.array(solver.equations.dumps).T
+        output = numpy.array(solver.diagnostics_list[0].dumps).T
         plt.plot(brachet_data[0], brachet_data[1], label="Brachet (1993)")
         plt.plot(output[0], output[1], label="This code")
         plt.title("Comparision to published data")
