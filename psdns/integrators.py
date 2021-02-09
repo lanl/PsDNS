@@ -6,6 +6,8 @@ the PDEs.
 import sys
 from time import time as walltime
 
+import numpy
+
 
 class Integrator(object):
     """Base class for integrators
@@ -15,7 +17,7 @@ class Integrator(object):
     shoud override the :meth:`step` method to implement the time
     advancement scheme.
     """
-    def __init__(self, equations, dt, tfinal, diagnostics):
+    def __init__(self, equations, dt, tfinal, diagnostics=[]):
         """Initialize an Integrator
 
         :params real dt: The timestep
@@ -62,8 +64,46 @@ class Euler(Integrator):
     def step(self):
         self.time += self.dt
         self.equations.uhat += self.dt*self.equations.rhs()
-        
 
+
+class ImplicitEuler(Integrator):
+    """
+
+    U[n+1] = U[n] + dt*F(U[n+1])
+    
+    Implement iteratively as
+
+    do
+      U[0] = U + dt * F(U[0])
+    until U[0] doesn't change much
+
+
+    In Delta form:
+
+      U[0] += U - U[0] + dt * F(U[0])
+
+
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.uhat0 = self.equations.uhat.copy()
+        self.resfile = open("residual.dat", 'w')
+
+    def step(self):
+        self.resfile.write("# Time = {}\n".format(self.time))
+        self.uhat0[...] = self.equations.uhat
+        self.time += self.dt
+        for i in range(100):
+            dU = self.uhat0 - self.equations.uhat + self.dt*self.equations.rhs()
+            self.equations.uhat += dU
+            res = numpy.linalg.norm(dU)
+            self.resfile.write("{} {}\n".format(i, res))
+            self.resfile.flush()
+            if res<1e-12:
+                break
+        self.resfile.write("\n\n")
+
+        
 class RungeKutta(Integrator):
     """An Runge-Kutta integrator
 

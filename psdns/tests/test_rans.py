@@ -9,7 +9,7 @@ from numpy import testing as nptest
 
 
 from psdns.bases import PhysicalArray, SpectralArray, spectral_grid
-from psdns.integrators import RungeKutta
+from psdns.integrators import ImplicitEuler
 from psdns.solvers import KEpsilon
 
 
@@ -48,15 +48,12 @@ class ShearLayer(KEpsilon):
         e = (self.estar*self.dU**3/h*(1-eta**2)).clip(min=1e-12)
         return u, K, e
 
-    def diagnostics(self, time, uhat):
-        pass
-
 
 class TestRANS(unittest.TestCase):
     def test_shear_layer(self):
         """Finite thickness one-dimensional shear-layer exact solution (Israel, 2018)
         """
-        solver = RungeKutta(
+        solver = ImplicitEuler(
             dt=0.01,
             tfinal=1.0,
             equations=ShearLayer(
