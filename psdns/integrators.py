@@ -67,25 +67,16 @@ class Euler(Integrator):
 
 
 class ImplicitEuler(Integrator):
+    """Implicit-Euler with fixed point iteration.
+
+    An implementation of the implicit Euler method, which uses a
+    fixed-point iteration with a relaxation factor.
     """
-
-    U[n+1] = U[n] + dt*F(U[n+1])
-    
-    Implement iteratively as
-
-    do
-      U[0] = U + dt * F(U[0])
-    until U[0] doesn't change much
-
-
-    In Delta form:
-
-      U[0] += U - U[0] + dt * F(U[0])
-
-
-    """
-    def __init__(self, **kwargs):
+    def __init__(self, alpha=0.5, niter=100, tol=1e-6, **kwargs):
         super().__init__(**kwargs)
+        self.alpha = alpha
+        self.niter = niter
+        self.tol = tol
         self.uhat0 = self.equations.uhat.copy()
         self.resfile = open("residual.dat", 'w')
 
@@ -93,13 +84,13 @@ class ImplicitEuler(Integrator):
         self.resfile.write("# Time = {}\n".format(self.time))
         self.uhat0[...] = self.equations.uhat
         self.time += self.dt
-        for i in range(100):
+        for i in range(self.niter):
             dU = self.uhat0 - self.equations.uhat + self.dt*self.equations.rhs()
-            self.equations.uhat += dU
+            self.equations.uhat += self.alpha*dU
             res = numpy.linalg.norm(dU)
             self.resfile.write("{} {}\n".format(i, res))
             self.resfile.flush()
-            if res<1e-12:
+            if res<self.tol:
                 break
         self.resfile.write("\n\n")
 

@@ -2,12 +2,14 @@
 
 A simple psuedo-spectral LES for the TGV.
 """
-from psdns.diagnostics import StandardDiagnostics
+import numpy
+
+from psdns.diagnostics import StandardDiagnostics, Spectra
 from psdns.integrators import RungeKutta
 from psdns.solvers import Smagorinsky, TaylorGreenIC
 
 
-class Equations(Smagorinsky, TaylorGreenIC, StandardDiagnostics):
+class Equations(Smagorinsky, TaylorGreenIC):
     pass
 
 
@@ -18,8 +20,11 @@ solver = RungeKutta(
         Re=400,
         N=2**5,
         padding=1.5,
-        tdump=0.1,
         ),
+    diagnostics=[
+        StandardDiagnostics(tdump=0.1, outfile="tgv.dat"),
+        Spectra(tdump=1.0, outfile="spectra.dat"),
+        ],
     )
 solver.run()
 solver.print_statistics()

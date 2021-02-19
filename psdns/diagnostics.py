@@ -86,7 +86,7 @@ class Spectra(Diagnostics):
     def diagnostic(self, time, equations, uhat):
         kmag = numpy.sqrt(numpy.sum(uhat.k**2, axis=0))
         kmax = numpy.amax(kmag)
-        nbins = max(kmag.shape)/2
+        nbins = int(max(kmag.shape)/2)
         dk = kmax/nbins
         wavenumbers = dk*numpy.arange(nbins+1)
         spectrum = numpy.zeros([nbins+1, 3])
