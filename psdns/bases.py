@@ -49,8 +49,8 @@ def spectral_grid(N, padding=1):
     return k, x
 
 
-class PhysicalArray(numpy.ndarray):
-    def __new__(cls, shape_or_data, k=None, x=None):
+class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
+    def __init__(self, shape_or_data, k=None, x=None, dtype=float):
         try:
             if shape_or_data.shape[-3:] != x.shape[1:]:
                 raise ValueError(
@@ -58,26 +58,56 @@ class PhysicalArray(numpy.ndarray):
                         shape_or_data.shape[-3:], x.shape[1:]
                         )
                     )
-            obj = shape_or_data.view(cls)
+            self._data = numpy.asarray(shape_or_data)
         except AttributeError:
-            obj = super().__new__(
-                cls,
+            self._data = numpy.zeros(
                 shape=list(shape_or_data)+list(x.shape[1:]),
-                dtype=numpy.float
+                dtype=dtype,
                 )
-        obj.k = k
-        obj.x = x
-        return obj
+        self.k = k
+        self.x = x
+        self.shape = self._data.shape
 
-    def __array_finalize__(self, obj):
-        if obj is None:
-            return
-        # This is a kludge.  Viewcasting shouldn't work if no k, x are
-        # available, but if we disable this, then we cannot create a
-        # view object on our way to adding attributes in to_spectral.
-        self.k = getattr(obj, 'k', None)
-        self.x = getattr(obj, 'x', None)
+    def __array__(self, dtype=None):
+        return numpy.array(self._data, dtype, copy=False)
 
+    def __getitem__(self, key):
+        # Need to add checks for valid extents.  Specifically, for
+        # slices check whether the return type should be a Physical
+        # array or a regular numpy.ndarray.
+        try:
+            ret = PhysicalArray(self._data[key], self.k, self.x)
+        except ValueError:
+            ret = self._data[key]
+        return ret
+    
+    def __setitem__(self, key, value):
+        self._data[key] = value
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        inputs = [ i._data if isinstance(i, PhysicalArray) else i
+                   for i in inputs ]
+        if 'out' in kwargs:
+            kwargs['out'] = tuple(
+                i._data if isinstance(i, SpectralArray)
+                else i
+                for i in kwargs['out']
+                )
+        ret = getattr(ufunc, method)(*inputs, **kwargs)
+        if method == '__call__':
+            # Need additional type and shape checking to see when to
+            # return a PhysicalArray, when an ndarray, and when the
+            # operation is invalid.
+            return PhysicalArray(ret, self.k, self.x)
+        else:
+            return ret
+
+    def transpose(self, *indicies):
+        return PhysicalArray(self._data.transpose(*indicies), self.k, self.x)
+
+    def clip(self, min=None, max=None):
+        return PhysicalArray(self._data.clip(min, max), self.k, self.x)
+    
     def to_spectral(self):
         # Index array which picks out retained modes in a complex transform
         N = self.k.shape[1:]
@@ -85,16 +115,16 @@ class PhysicalArray(numpy.ndarray):
         i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
         return SpectralArray(
             numpy.fft.rfftn(
-                self,
+                self._data,
                 s=self.x.shape[1:],
-                )[...,i0[:,numpy.newaxis],i1,:N[2]],
+                )[...,i0[:,numpy.newaxis],i1,:N[2]]/self.x[0].size,
             self.k,
             self.x
-            )/self.x[0].size
+            )
         
         
-class SpectralArray(numpy.ndarray):
-    def __new__(cls, shape_or_data, k=None, x=None):
+class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
+    def __init__(self, shape_or_data, k=None, x=None, dtype=complex):
         try:
             if shape_or_data.shape[-3:] != k.shape[1:]:
                 raise ValueError(
@@ -102,22 +132,61 @@ class SpectralArray(numpy.ndarray):
                         shape_or_data.shape[-3:], k.shape[1:]
                         )
                     )
-            obj = shape_or_data.view(cls)
+            self._data = numpy.asarray(shape_or_data)
+            # If shape_or_data is a spectral array, use its k, x
         except AttributeError:
-            obj = super().__new__(
-                cls,
+            self._data = numpy.zeros(
                 shape=list(shape_or_data)+list(k.shape[1:]),
-                dtype=numpy.complex
+                dtype=dtype
                 )
-        obj.k = k
-        obj.x = x
-        return obj
+        self.k = k
+        self.x = x
+        self.shape = self._data.shape
 
-    def __array_finalize__(self, obj):
-        if obj is None:
-            return
-        self.k = getattr(obj, 'k', None)
-        self.x = getattr(obj, 'x', None)
+    def __array__(self, dtype=None):
+        return numpy.array(self._data, dtype, copy=False)
+
+    def __getitem__(self, key):
+        try:
+            ret = SpectralArray(self._data[key], self.k, self.x)
+        except ValueError:
+            ret = self._data[key]
+        return ret
+
+    def __setitem__(self, key, value):
+        self._data[key] = value
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        if method == '__call__':
+            # Need additional type and shape checking to see when to
+            # return a PhysicalArray, when an ndarray, and when the
+            # operation is invalid.
+            # There should be a cleaner way to do the following:
+            if 'out' in kwargs:
+                kwargs['out'] = tuple(
+                    i._data if isinstance(i, SpectralArray)
+                    else i
+                    for i in kwargs['out']
+                    )
+            return SpectralArray(
+                ufunc(
+                    *[ i._data if isinstance(i, SpectralArray) else i for i in inputs ],
+                    **kwargs
+                    ),
+                self.k,
+                self.x
+                )
+        else:
+            return NotImplemented
+
+    def copy(self):
+        return SpectralArray(self._data.copy(), self.k, self.x)
+        
+    def conjugate(self):
+        return SpectralArray(self._data.conjugate(), self.k, self.x)
+
+    def real(self):
+        return SpectralArray(self._data.real(), self.k, self.x)
 
     def to_physical(self):
         N = self.k.shape[1:]

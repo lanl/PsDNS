@@ -16,12 +16,13 @@ class TestTransforms(unittest.TestCase):
         s[...] = 0
         s[1,0,2] = -0.25j
         s[-1,0,2] = -0.25j
-        nptest.assert_almost_equal(p.to_spectral(), s)
+        # Add methods so this comparison works
+        nptest.assert_almost_equal(p.to_spectral()._data, s._data)
 
     def test_round_trip(self):
         p = PhysicalArray((), *spectral_grid(8))
         p[...] = numpy.random.rand(*p.shape)
         nptest.assert_almost_equal(
-            p,
-            p.to_spectral().to_physical(),
+            p._data,
+            p.to_spectral().to_physical()._data,
             )

@@ -174,7 +174,7 @@ class Smagorinsky(SimplifiedSmagorinsky):
     def rhs(self):
         u = self.uhat.to_physical()
         gradu = self.uhat.grad().to_physical()
-        Sij = ((gradu + gradu.transpose(1,0,2,3,4))/2)
+        Sij = ((gradu + gradu.transpose(1,0))/2)
         nu_t = (self.Cs*self.dx)**2*numpy.sqrt(numpy.sum(Sij*Sij, axis=(0,1)))
         nl1 = numpy.einsum("k...,jk...->j...", self.uhat.k, (nu_t*gradu).to_spectral())
         nl2 = numpy.einsum("k...,jk...->j...", u, gradu)
