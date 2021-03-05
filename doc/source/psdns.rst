@@ -5,6 +5,14 @@ psdns package
    :members:
    :undoc-members:
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   psdns.tests
+
 Submodules
 ----------
 

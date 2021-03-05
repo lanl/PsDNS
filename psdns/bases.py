@@ -71,6 +71,12 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     def __array__(self, dtype=None):
         return numpy.array(self._data, dtype, copy=False)
 
+    def __str__(self):
+        return str(self._data)
+
+    def __repr__(self):
+        return f"PhysicalArray({str(self._data)})"
+
     def __getitem__(self, key):
         # Need to add checks for valid extents.  Specifically, for
         # slices check whether the return type should be a Physical
@@ -116,7 +122,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         return SpectralArray(
             numpy.fft.rfftn(
                 self._data,
-                s=self.x.shape[1:],
+                axes = (-3,-2,-1),
                 )[...,i0[:,numpy.newaxis],i1,:N[2]]/self.x[0].size,
             self.k,
             self.x
@@ -145,6 +151,12 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
 
     def __array__(self, dtype=None):
         return numpy.array(self._data, dtype, copy=False)
+
+    def __str__(self):
+        return str(self._data)
+
+    def __repr__(self):
+        return f"SpectralArray({str(self._data)})"
 
     def __getitem__(self, key):
         try:
@@ -193,7 +205,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
         i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
         s = numpy.zeros(
-            shape = list(self.shape[:-3]) + list(self.x.shape[1:]),
+            shape = list(self.shape[:-3])
+            + [ self.x.shape[1], self.x.shape[2], self.x.shape[3]//2+1 ],
             dtype = complex
             )
         s[...,i0[:,numpy.newaxis],i1,:N[2]] = self
