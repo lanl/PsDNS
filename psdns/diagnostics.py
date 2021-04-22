@@ -91,8 +91,8 @@ class Spectra(Diagnostics):
         wavenumbers = dk*numpy.arange(nbins+1)
         spectrum = numpy.zeros([nbins+1, 3])
         ispectrum = numpy.zeros([nbins+1], dtype=int)
-        
-        for k, u in numpy.nditer([kmag, (uhat[:3]*uhat[:3].conjugate()).real]):
+
+        for k, u in numpy.nditer([kmag, (uhat[:3]*uhat[:3].conjugate()).real()]):
             spectrum[int(k/dk)] += u
             ispectrum[int(k/dk)] += 1
         spectrum *= 4*numpy.pi*(wavenumbers**2/ispectrum)[:,numpy.newaxis]

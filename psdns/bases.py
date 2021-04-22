@@ -40,6 +40,7 @@ def spectral_grid(N, padding=1):
     fftfreq0 = numpy.fft.fftfreq(xdims[0], 1/xdims[0])[[*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)]]
     fftfreq1 = numpy.fft.fftfreq(xdims[1], 1/xdims[1])[[*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)]]
     rfftfreq = numpy.fft.rfftfreq(xdims[2], 1/xdims[2])[:N[2]//2+1]
+
     #: The spectral wave number coordinates of the local array
     k = numpy.array( [
         fftfreq0[k[0]],
@@ -117,18 +118,25 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     def to_spectral(self):
         # Index array which picks out retained modes in a complex transform
         N = self.k.shape[1:]
+        M = self.x.shape[1:]
         i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
         i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
+        s = numpy.fft.rfftn(
+            self._data,
+            axes = (-3,-2,-1),
+            )
+        # One option for dealing with truncation:
+        if M[0] > N[0] and N[0] % 2 == 0:
+            s[...,-(N[0]//2),:,:] = s[...,N[0]//2,:,:]+s[...,-(N[0]//2),:,:]
+        if M[1] > N[1] and N[1] % 2 == 0:
+            s[...,:,-(N[1]//2),:] = s[...,:,N[1]//2,:]+s[...,:,-(N[1]//2),:]
         return SpectralArray(
-            numpy.fft.rfftn(
-                self._data,
-                axes = (-3,-2,-1),
-                )[...,i0[:,numpy.newaxis],i1,:N[2]]/self.x[0].size,
+            s[...,i0[:,numpy.newaxis],i1,:N[2]]/self.x[0].size,
             self.k,
             self.x
             )
-        
-        
+
+
 class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     def __init__(self, shape_or_data, k=None, x=None, dtype=complex):
         try:
@@ -198,10 +206,11 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         return SpectralArray(self._data.conjugate(), self.k, self.x)
 
     def real(self):
-        return SpectralArray(self._data.real(), self.k, self.x)
+        return SpectralArray(self._data.real, self.k, self.x)
 
     def to_physical(self):
         N = self.k.shape[1:]
+        M = self.x.shape[1:]
         i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
         i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
         s = numpy.zeros(
@@ -210,6 +219,12 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             dtype = complex
             )
         s[...,i0[:,numpy.newaxis],i1,:N[2]] = self
+        if M[0] > N[0] and N[0] % 2 == 0:
+            s[...,-(N[0]//2),:,:] *= 0.5
+            s[...,N[0]//2,:,:] = s[...,-(N[0]//2),:,:]
+        if M[1] > N[1] and N[1] % 2 == 0:
+            s[...,:,-(N[1]//2),:] *= 0.5
+            s[...,:,N[1]//2,:] = s[...,:,-(N[1]//2),:]
         return PhysicalArray(
             numpy.fft.irfftn(
                 s,
