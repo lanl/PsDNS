@@ -101,3 +101,11 @@ class Spectra(Diagnostics):
             self.outfile.write("{} {}\n".format(i, sum(s)))
         self.outfile.write("\n\n")
         self.outfile.flush()
+
+
+class FieldDump(Diagnostics):
+    def diagnostic(self, time, equations, uhat):
+        numpy.save(
+            "data{:04g}".format(time),
+            uhat
+            )
