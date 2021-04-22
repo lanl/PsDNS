@@ -99,7 +99,7 @@ class TestDiagnostics(Diagnostics):
         self.dumps = []
     
     def diagnostic(self, time, equations, uhat):
-        eps = [ (1j*uhat.k[i]*uhat[j]).norm()
+        eps = [ (1j*uhat.k[i]*uhat[j]).to_physical().norm()
                 for i in range(3) for j in range(3) ]
         self.dumps.append( [ time, equations.nu*sum(eps) ] )
 
@@ -112,13 +112,19 @@ class TestDNS(unittest.TestCase):
         and high tolerance.  It is at about the limit of the
         acceptable run time for a unit test (currently about 18
         seconds on a 2.8 GHz Intel i7).
+
+        A currently unexplained phenomenon: if the scalings for the
+        truncated modes are commented out, then this test passes,
+        although both the "round-trip" and comparision to mpi4py-fft
+        tests fail.  If they are uncommented, the latter tests pass,
+        but this test requires N=2**5 to pass.
         """
         solver = RungeKutta(
             dt=0.01,
             tfinal=10.0,
             equations=Equations(
                 Re=100,
-                N=2**4,
+                N=2**5,
                 padding=1.5,
             ),
             diagnostics=[

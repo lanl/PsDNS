@@ -151,16 +151,9 @@ class TestProperties(unittest.TestCase):
         for N, padding in self.domains:
             with self.subTest(N=N, padding=padding):
                 s = random_spectral_array(*spectral_grid(N, padding))
-                s[...] = 0
-                s[0,0,0] = 1
-                print(N,padding)
-                print(numpy.sqrt(s.shape[0]*s.shape[1]*s.shape[2]))
-                print(numpy.linalg.norm(s.to_physical()))
-                print(numpy.sqrt(s.shape[0]*s.shape[1]*s.shape[2])/
-                numpy.linalg.norm(s.to_physical()))
                 self.assertAlmostEqual(
                     s.norm(),
-                    numpy.linalg.norm(s.to_physical())
+                    s.to_physical().norm()
                     )
 
 

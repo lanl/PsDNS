@@ -136,6 +136,9 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             self.x
             )
 
+    def norm(self):
+        return numpy.average(self*self)
+
 
 class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     def __init__(self, shape_or_data, k=None, x=None, dtype=complex):
@@ -249,10 +252,20 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     def norm(self):
         """Return the L2 norm of a spectral array.
         """
-        return numpy.sum(
-            (self[...,0]*numpy.conjugate(self[...,0])).real
-            +2*numpy.sum(
-               (self[...,1:]*numpy.conjugate(self[...,1:])).real,
-               axis=-1
-               )
-            )
+        if self.x.shape[3] % 2 == 0 and self.k.shape[3] == self.x.shape[3]/2+1:
+            return numpy.sum(
+                (self[...,0]*numpy.conjugate(self[...,0])).real
+                +2*numpy.sum(
+                    (self[...,1:-1]*numpy.conjugate(self[...,1:-1])).real,
+                    axis=-1
+                    )
+                +(self[...,-1]*numpy.conjugate(self[...,-1])).real
+                )
+        else:
+            return numpy.sum(
+                (self[...,0]*numpy.conjugate(self[...,0])).real
+                +2*numpy.sum(
+                    (self[...,1:]*numpy.conjugate(self[...,1:])).real,
+                    axis=-1
+                    )
+                )
