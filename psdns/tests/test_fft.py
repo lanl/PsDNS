@@ -3,38 +3,61 @@ import unittest
 import numpy
 from numpy import testing as nptest
 
-from psdns.bases import SpectralArray, PhysicalArray, spectral_grid
+from psdns.bases import SpectralArray, PhysicalArray, spectral_grid, use_mpi4py_fft_scaling
 from mpi4py import MPI
 from mpi4py_fft import PFFT, newDistArray
 
 
+_domains = [
+    #: A list of domains on which to run individual tests.  Each domain
+    #: is a 2-tuple which is passed as the arguments to the
+    #: :func:`~psdns.bases.spectral_grid` function.
+    ( (9, 9, 9), [1, 1, 1]),
+    ( (8, 9, 9), [1, 1, 1]),
+    ( (9, 8, 9), [1, 1, 1]),
+    ( (8, 8, 9), [1, 1, 1]),
+    ( (9, 9, 8), [1, 1, 1]),
+    ( (8, 9, 8), [1, 1, 1]),
+    ( (9, 8, 8), [1, 1, 1]),
+    ( (8, 8, 8), [1, 1, 1]),
+    ( (9, 9, 9), [1.5, 1.5, 1.5]),
+    ( (8, 9, 9), [1.5, 1.5, 1.5]),
+    ( (9, 8, 9), [1.5, 1.5, 1.5]),
+    ( (8, 8, 9), [1.5, 1.5, 1.5]),
+    ( (9, 9, 8), [1.5, 1.5, 1.5]),
+    ( (8, 9, 8), [1.5, 1.5, 1.5]),
+    ( (9, 8, 8), [1.5, 1.5, 1.5]),
+    ( (8, 8, 8), [1.5, 1.5, 1.5]),
+    ( (8, 8, 8), [1.5, 1.5, 1]),
+    ]
+
+
 def random_spectral_array(k, x):
+    """Return a random :class:`~psdns.bases.SpectralArray`."""
+    # In order to assure that this spectral array has the approriate
+    # symmetries, start with a physical space array, and transform to
+    # spectral space.
     return PhysicalArray(numpy.random.random(x.shape[1:]), k, x).to_spectral()
 
 
 def random_physical_array(k, x):
+    """Return a random :class:`~psdns.bases.PhysicalArray`."""
+    # In order to assure that this physical array has no spectral
+    # content in wave numbers which are truncated on this grid, start
+    # with a spectral space array, and transform to physical space. 
     return random_spectral_array(k, x).to_physical()
 
 
 class TestSymmetries(unittest.TestCase):
     r"""Test that spectral transforms have the correct symmetries.
     """
-    domains = [
-        (8, 1),
-        (9, 1),
-        (8, 1.5),
-        (9, 1.5),
-        (8, 2),
-        (9, 2),
-        ]
-
     def test_z_zero(self):
         r"""Test Hermitian symmetry when z=0"""
-        for N, padding in self.domains:
+        for N, padding in _domains:
             with self.subTest(N=N, padding=padding):
                 s = random_spectral_array(*spectral_grid(N, padding))
-                for k in range(1, N//2):
-                    for l in range(1, N//2):
+                for k in range(1, N[0]//2):
+                    for l in range(1, N[1]//2):
                         with self.subTest(k=k, l=l):
                             self.assertAlmostEqual(
                                 s[k, l, 0],
@@ -43,12 +66,12 @@ class TestSymmetries(unittest.TestCase):
 
     def test_z_max(self):
         r"""Test Hermitian symmetry when z=Nz/2"""
-        for N, padding in self.domains:
+        for N, padding in _domains:
             with self.subTest(N=N, padding=padding):
-                if N % 2 == 0:
+                if N[2] % 2 == 0:
                     s = random_spectral_array(*spectral_grid(N, padding))
-                    for k in range(1, N//2):
-                        for l in range(1, N//2):
+                    for k in range(1, N[0]//2):
+                        for l in range(1, N[1]//2):
                             with self.subTest(k=k, l=l):
                                 self.assertAlmostEqual(
                                     s[k, l, 0],
@@ -57,16 +80,12 @@ class TestSymmetries(unittest.TestCase):
 
     def test_real_corners(self):
         r"""Test for real values in corners"""
-        for N, padding in self.domains:
+        for N, padding in _domains:
             with self.subTest(N=N, padding=padding):
                 s = random_spectral_array(*spectral_grid(N, padding))
-                if padding == 1 and N % 2 == 0:
-                    r = [ 0, N // 2 ]
-                else:
-                    r = [ 0 ]
-                for k in r:
-                    for l in r:
-                        for m in r:
+                for k in [ 0, -N[0]//2 ] if padding[0] == 1 and N[0] % 2 == 0 else [ 0 ]:
+                    for l in [ 0, -N[1]//2 ] if padding[1] == 1 and N[1] % 2 == 0 else [ 0 ]:
+                        for m in [ 0, N[2]//2 ] if padding[2] == 1 and N[2] % 2 == 0 else [ 0 ]:
                             with self.subTest(k=k, l=l, m=m):
                                 self.assertAlmostEqual(s[k, l, m].imag, 0)
 
@@ -74,29 +93,10 @@ class TestSymmetries(unittest.TestCase):
 class TestProperties(unittest.TestCase):
     """Test that various mathematical properties of the FFT obeyed.
     """
-    domains = [
-        ( (9, 9, 9), 1),
-        ( (8, 9, 9), 1),
-        ( (9, 8, 9), 1),
-        ( (8, 8, 9), 1),
-        ( (9, 9, 8), 1),
-        ( (8, 9, 8), 1),
-        ( (9, 8, 8), 1),
-        ( (8, 8, 8), 1),
-        ( (9, 9, 9), 1.5),
-        ( (8, 9, 9), 1.5),
-        ( (9, 8, 9), 1.5),
-        ( (8, 8, 9), 1.5),
-        ( (9, 9, 8), 1.5),
-        ( (8, 9, 8), 1.5),
-        ( (9, 8, 8), 1.5),
-        ( (8, 8, 8), 1.5),
-        ]
-
     def test_round_trip1(self):
         """Transforming to spectral and back to physical returns the original value.
         """
-        for N, padding in self.domains:
+        for N, padding in _domains:
             with self.subTest(N=N, padding=padding):
                 k, x = spectral_grid(N, padding)
                 p = random_physical_array(k, x)
@@ -108,7 +108,7 @@ class TestProperties(unittest.TestCase):
     def test_round_trip2(self):
         """Transforming to physical and back to spectral returns the original value.
         """
-        for N, padding in self.domains:
+        for N, padding in _domains:
             with self.subTest(N=N, padding=padding):
                 k, x = spectral_grid(N, padding)
                 s = random_spectral_array(k, x)
@@ -118,9 +118,9 @@ class TestProperties(unittest.TestCase):
                     )
 
     def test_linear1(self):
-        """Physical-to-spectral are linear.
+        """Physical-to-spectral transforms are linear.
         """
-        for N, padding in self.domains:
+        for N, padding in _domains:
             with self.subTest(N=N, padding=padding):
                 grid = spectral_grid(N, padding)
                 p1 = random_physical_array(*grid)
@@ -132,9 +132,9 @@ class TestProperties(unittest.TestCase):
                     )
 
     def test_linear2(self):
-        """Spectral-to-physical are linear.
+        """Spectral-to-physical transforms are linear.
         """
-        for N, padding in self.domains:
+        for N, padding in _domains:
             with self.subTest(N=N, padding=padding):
                 grid = spectral_grid(N, padding)
                 s1 = random_spectral_array(*grid)
@@ -147,14 +147,149 @@ class TestProperties(unittest.TestCase):
 
     def test_norm(self):
         """Spectral norm should match physical space norm.
+
+        .. note::
+
+            When the :data:`use_mpi4py_fft_scaling` flag is set, certain
+            domains are not tested, because of an inconsistency in the
+            treatment of certain modes, see :meth:`test_norm_pointwise`.
         """
-        for N, padding in self.domains:
+        for N, padding in _domains:
             with self.subTest(N=N, padding=padding):
                 s = random_spectral_array(*spectral_grid(N, padding))
+                if (use_mpi4py_fft_scaling and
+                    ((s.x.shape[1] > s.k.shape[1] and s.k.shape[1] % 2 == 0) or
+                     (s.x.shape[2] > s.k.shape[2] and s.k.shape[2] % 2 == 0))):
+                    print(f"skipping test_norm with N={N}, expected failure")
+                    continue
                 self.assertAlmostEqual(
                     s.norm(),
                     s.to_physical().norm()
                     )
+
+    def test_norm2(self):
+        """Physical norm should match spectral space norm.
+
+        .. note::
+
+            When the :data:`use_mpi4py_fft_scaling` flag is set, certain
+            domains are not tested, because of an inconsistency in the
+            treatment of certain modes, see :meth:`test_norm_pointwise`.
+        """
+        for N, padding in _domains:
+            with self.subTest(N=N, padding=padding):
+                p = random_physical_array(*spectral_grid(N, padding))
+                if (use_mpi4py_fft_scaling and
+                    ((p.x.shape[1] > p.k.shape[1] and p.k.shape[1] % 2 == 0) or
+                     (p.x.shape[2] > p.k.shape[2] and p.k.shape[2] % 2 == 0))):
+                    print(f"skipping test_norm2 with N={N}, expected failure")
+                    continue
+                self.assertAlmostEqual(
+                    p.norm(),
+                    p.to_spectral().norm()
+                    )
+
+    def test_norm_pointwise(self):
+        """Spectral norm should match physical space norm for a single mode.
+
+        This test is specifically intended to help catch errors due to
+        scaling of particular modes.  It takes compares the norm of a
+        physical space array containing a single cosine mode to the norm
+        of its transform in spectral.  These should be equal.  However,
+        when the :data:`~psdns.bases.use_mpi4py_fft_scaling` flag is
+        set, this is not the case for certain modes, as in the following
+        example.
+
+        Consider a case for which the first index is padded, and the
+        spectral arrays are truncated to an even number of modes.  (The
+        same argument can be applied to the second index.)  Before
+        truncating, the transform contains both modes ``N[0]//2`` and
+        ``-(N[0]//2)``, however, after truncating, only the latter mode
+        is retained.
+
+        Consider the physical space array initialized by::
+
+        p = 2*cos(-(N[0]//2)*x)
+
+        When transformed, the resulting array has two non-zero modes::
+
+        s[-4,0,0] == s[4,0,0] == 1
+
+        The truncation algorithm sets::
+
+        s[-4,0,0] == 2
+
+        and the other non-zero mode is not kept.
+
+        In this case we have::
+
+        p.norm() == 2
+
+        and::
+
+        s.norm() == 4
+
+        This is not a bug in the implementation, it is an inconsistency
+        in the algorithm used by `mpi4py-fft
+        <https://mpi4py-fft.readthedocs.io>`_.
+          
+
+        1. Initialize p=2*cos(-4x).
+        2. Transform has only non-zero modes of u[-4,0,0]=u[4,0,0]=1.
+        3. Truncation sets u[-4,0,0]=2.  u[4,:,:4] is not retained.
+        4. |p| = 2, |s| = 4.
+        5. Back transforming, the padding algorithm sets
+        u[-4,0,0]=u[4,0,0]=1.
+        6. This is actually correct, and the transform is p=2*cos(-4x).
+
+
+
+        CLEAN THIS UP!!!
+
+        Consider the case N=(8,9,9), padding=1.5.
+
+        1. Initialize p=2*cos(-4x+y).
+        2. Transform has only non-zero modes of u[-4,1,0]=u[4,-1,0]=1.
+        3. Truncation sets u[-4,1,0]=u[-4,-1,0]=1.  u[4,:,:] is not
+        retained.
+        4. |p| = |s| = 2.
+        5. Back transforming, the padding algorithm sets
+        u[-4,1,0]=u[4,1,0]=1/2.
+        6. This is bad, because u[4,-1,0] and u[-4,-1,0], which are also
+        in the padded array, are zero, so the array passed for transform
+        is not Hermitian symmetric!  And, in fact, the result is not the
+        original physical space array, i.e., this fails the round-trip
+        test.
+
+        However,
+        """
+        for N, padding in _domains:
+            with self.subTest(N=N, padding=padding):
+                skips = 0
+                for k in range(-(N[0]//2), (N[0]+1)//2):
+                    for l in range(-(N[1]//2), (N[1]+1)//2):
+                        for m in range(N[2]//2+1):
+                            # It might seem easier to set this test up
+                            # in spectral space, but it is not, because
+                            # that requires special case handling for
+                            # edge and corner points.
+                            theta = numpy.random.rand()
+                            p = PhysicalArray((), *spectral_grid(N, padding))
+                            p[...] = 2*numpy.cos(k*p.x[0]+l*p.x[1]+m*p.x[2]+theta)
+                            if (use_mpi4py_fft_scaling and
+                                ((p.x.shape[1] > p.k.shape[1]
+                                  and -2*k == p.k.shape[1] or k == 0) and
+                                 (p.x.shape[2] > p.k.shape[2]
+                                  and -2*l == p.k.shape[2] or l == 0))):
+                                skips += 1
+                                continue
+                            with self.subTest(k=k, l=l, m=m):
+                                self.assertAlmostEqual(
+                                    p.norm(),
+                                    p.to_spectral().norm()
+                                    )
+                if skips:
+                    print(f"test_norm_pointwise with N={N}, skipped {skips} tests, expected failure")
 
 
 class TestSingleMode(unittest.TestCase):
@@ -297,20 +432,47 @@ class TestSingleMode(unittest.TestCase):
 
 
     """
-    domains = [
-        #( (9, 9, 9), 1),
-        #( (9, 9, 8), 1),
-        #( (8, 9, 8), 1),
-        #( (9, 8, 8), 1),
-        #( (8, 8, 8), 1),
-        #( (9, 9, 9), 1.5),
-        #( (9, 9, 8), 1.5),
-        #( (9, 8, 8), 1.5),
-        #( (8, 9, 8), 1.5),
-        ( (8, 8, 8), 1.5),
-        ]
 
-    def forward_backward(self, p, s):
+
+
+    """
+
+    In 1-d, truncation of a complex transform to an even number of
+    modes leaves a mode with a symmetry issue.  EXPLICATE
+
+    In 3-d, in general truncation of interior or corner modes is not a
+    problem.  Howerver, if Nx, Ny even, there is a strange type of
+    filtering.  Furthermore, when back transforming, the edge modes
+    are an issue...
+
+    Consider M>N physical and spectral modes respectively, and N is
+    even.  Before truncation we have two interior modes,
+
+      \hat{u}[-(N//2), l, m] <===> \hat{u}[N//2, -l, -m]
+      \hat{u}[N//2, l, m] <===> \hat{u}[-(N//2), -l, -m]
+    
+    These have the physical space representation
+
+      \cos -(N//2) x + l y + m z
+      \cos N//2 x + l y + m z
+    
+    So truncating gets rid of two modes with the same wavenumber
+    magnitude.
+
+    More importantly, consider the special case of (the same would
+    apply for l=M//2 if there is no truncation in the second index).
+
+      \hat{u}[-(N//2), 0, 0]
+
+    The H.S. of this mode exists on the untruncated grid, [(N//2), 0,
+    0], but not on the truncated grid.  If the reverse transform is
+    performed with this H.S. mode zero-padded, then the results are
+    undefined, because the array is not H.S., so the inverse FFT is
+    not real.
+
+    Therefore, some modification must be made to these modes.
+    """
+    def assert_forward_backward(self, p, s):
         with self.subTest(dir="forward"):
             nptest.assert_almost_equal(
                 numpy.asarray(p.to_spectral()),
@@ -323,231 +485,138 @@ class TestSingleMode(unittest.TestCase):
                 )
 
     def test_single_mode(self):
-        for N, padding in self.domains:
+        """Forward and backward transforms of a single mode are correct.
+
+        Note that the various cases could be broken out into different
+        tests, however, this implementation, that iterates over all
+        modes in one routine was chosen to reduce the likelihood that
+        tests of certain modes were inadvertantly omitted.
+
+        Three kinds of points:
+        1. Interiour
+        2. Edge (m==0 or m==N/2)
+        3. Corner (k==l==m==0 or N/2).
+        With anti-aliasing:
+        4. Truncated modes only need to be tested for forward
+        transform.
+        5. If we truncate in either of the first two dimensions to an
+        even number of point, then we will have H.S. pairs of edge
+        points where only one point is retained.  The algorithm needs to
+        fix this before back transforming, otherwise the padded array
+        returned to the inverse real-FFT routine will not, in general,
+        be H.S., and therefore the results will be undefined.
+
+        The simplest solution is to set the member of the pair which is
+        kept to zero.  This is equivalent to always setting the spectral
+        size of the array to an odd number.
+
+        The next option would be to pad the H.S. mode with the complex
+        conjugate of the retained mode.
+
+        """
+        for N, padding in _domains:
             with self.subTest(N=N, padding=padding):
-                grid = spectral_grid(N, padding)
-                Nx, Ny, Nz = grid[0].shape[1:]
-                Mx, My, Mz = grid[1].shape[1:]
-                print(grid[0].shape)
-                print(grid[1].shape)
-                for k in range(-(Mx//2), (Mx+1)//2):
-                    for l in range(-(My//2), (My+1)//2):
-                        for m in range(0, (My+1)//2):
-                            if k != 4 or l != 2 or m != 0:
-                                continue
-                            print(k, l, m)
+                skips = 0
+                M = (numpy.asarray(N)*numpy.asarray(padding)).astype(int)
+                for k in range(-(M[0]//2), (M[0]+1)//2):
+                    for l in range(-(M[1]//2), (M[1]+1)//2):
+                        for m in range(M[2]//2+1):
                             with self.subTest(k=k, l=l, m=m):
-                                s = SpectralArray((), *grid)
-                                p = PhysicalArray((), *grid)
-                                theta = 2*numpy.pi*(numpy.random.random()-0.5)
-                                if (k > (Nx-1)//2 or k < -(Nx//2) or
-                                    l > (Ny-1)//2 or l < -(Ny//2) or
-                                    m >= Nz):
-                                    p[...] = 2*numpy.cos(k*grid[1][0]+l*grid[1][1]+m*grid[1][2]+theta)
-                                    nptest.assert_almost_equal(
-                                        numpy.asarray(p.to_spectral()),
-                                        numpy.asarray(s)
-                                        )
+                                s = SpectralArray((), *spectral_grid(N, padding))
+                                p = PhysicalArray((), *spectral_grid(N, padding))
+                                if (use_mpi4py_fft_scaling and
+                                    ((p.x.shape[1] > p.k.shape[1] and abs(2*k) == p.k.shape[1]) or
+                                     (p.x.shape[2] > p.k.shape[2] and abs(2*l) == p.k.shape[2]))):
+                                    skips += 1
+                                    continue
+                                theta = numpy.random.rand()
+                                if ((-2*k > N[0] or 2*k > N[0]-1) or
+                                    (-2*l > N[1] or 2*l > N[1]-1) or
+                                    2*m > N[2]):
+                                    # Truncated modes
+                                    p[...] = 2*numpy.cos(k*p.x[0]+l*p.x[1]+m*p.x[2]+theta)
+                                    # If the truncated mode is k==4, and m==0
+                                    # then the spectral result is not
+                                    # actually zero, because there is
+                                    # content in the k==-4 mode, which
+                                    # is retained.
+                                    if (((2*k==N[0] and 2*abs(l)<=N[1]) or 
+                                         (2*l==N[1] and 2*abs(k)<=N[0])) and
+                                        (m==0 or 2*m == M[2] == N[2])):
+                                        s[-k,-l,m] = numpy.exp(-1j*theta)
+                                        with self.subTest(type='HS pos'):
+                                            self.assert_forward_backward(p, s)
+                                        continue
+                                    with self.subTest(dir='forward', type='trunc'):
+                                        nptest.assert_almost_equal(
+                                            numpy.asarray(p.to_spectral()),
+                                            numpy.asarray(s)
+                                            )
+                                    continue
+                                elif (((M[0]>N[0] and -2*k==N[0] and 2*abs(l)<=N[1]) or
+                                       (M[1]>N[1] and -2*l==N[1] and 2*abs(k)<=N[0])) and
+                                      (m==0 or 2*m == N[2])):
+                                    s[k,l,m] = numpy.exp(1j*theta)
+                                    p[...] = 2*numpy.cos(k*p.x[0]+l*p.x[1]+m*p.x[2]+theta)
+                                    type = 'HS neg'
+                                elif ((k == 0 or -2*k == M[0]) and
+                                      (l == 0 or -2*l == M[1]) and
+                                      (m == 0 or 2*m == M[2] == N[2])):
+                                    # Corner points must be real
+                                    s[k, l, m] = 1.0
+                                    p[...] = numpy.cos(k*p.x[0]+l*p.x[1]+m*p.x[2])
+                                    type = 'corner'
+                                elif m == 0 or 2*m == M[2]:
+                                    # Edge points must have a
+                                    # Hermitian symmetric mode in the
+                                    # spectral array.
+                                    #
+                                    # The only time the indicies -k
+                                    # and k or -l and l point to the
+                                    # same entry are if
+
+                                    #
+                                    # k >=  N[0] - k
+                                    #
+                                    # 2 k >= N[0]
+                                    #
+                                    # I believe this should always be
+                                    # caught by option 1
+                                    # (truncation).
+                                    #
+                                    s[k, l, m] = numpy.exp(1j*theta)
+                                    s[-k, -l, m] = numpy.exp(-1j*theta)
+                                    p[...] = 2*numpy.cos(k*p.x[0]+l*p.x[1]+m*p.x[2]+theta)
+                                    type = 'edge'
                                 else:
-                                    print("missed point")
-                                #    continue
-                                # if (m == 0 or 2*m == Mz):
-                                #     if ((k == 0 or 2*k == -Mx) and
-                                #         (l == 0 or 2*l == -My)):
-                                #         with self.subTest(type="corner"):
-                                #             s[k, l, m] = 1.0
-                                #             p[...] = numpy.cos(k*grid[1][0]+l*grid[1][1]+m*grid[1][2])
-                                #             self.forward_backward(p, s)
-                                #             continue
-                                #     elif (2*k != -Nx or 2*l != -Ny):
-                                #         with self.subTest(type="edge"):
-                                #             s[k, l, m] = numpy.exp(1j*theta)
-                                #             s[-k, -l, m] = numpy.exp(-1j*theta)
-                                #             p[...] = 2*numpy.cos(k*grid[1][0]+l*grid[1][1]+m*grid[1][2]+theta)
-                                #             self.forward_backward(p, s)
-                                #             continue
-                                # with self.subTest(type="interior"):
-                                #     s[k, l, m] = numpy.exp(1j*theta)
-                                #     p[...] = 2*numpy.cos(k*grid[1][0]+l*grid[1][1]+m*grid[1][2]+theta)
-                                #     self.forward_backward(p, s)
-                    
-    
-# class TestSingleMode(unittest.TestCase):
-#     """Test that the transform of a single mode is correct.
-
-#     Transform of physical size N1, N2, N3, no padding.
-
-#     N3 is odd.  Then 
-
-#     """
-#     domains = [
-#         (8, 1),
-#         (9, 1),
-#         (8, 1.5),
-#         (9, 1.5),
-#         #(8, 2),
-#         (9, 2),
-#         ]
-
-#     def test_interior(self):
-#         for N, padding in self.domains:
-#             with self.subTest(N=N, padding=padding):
-#                 for m in range(1, (N+1)//2):
-#                     for l in range(-(N//2), (N+1)//2):
-#                         for k in range(-(N//2), (N+1)//2):
-#                             with self.subTest(k=k, l=l, m=m):
-#                                 theta = 2*numpy.pi*(numpy.random.random()-0.5)
-#                                 s = SpectralArray((), *spectral_grid(N, padding))
-#                                 s[k,l,m] = numpy.exp(1j*theta)
-#                                 p = PhysicalArray((), *spectral_grid(N, padding))
-#                                 p[...] = 2*numpy.cos(
-#                                     k*p.x[0]+l*p.x[1]+m*p.x[2]+theta
-#                                     )
-#                                 with self.subTest(dir="forward"):
-#                                     nptest.assert_almost_equal(
-#                                         numpy.asarray(p.to_spectral()),
-#                                         numpy.asarray(s)
-#                                         )
-#                                 with self.subTest(dir="backward"):
-#                                     nptest.assert_almost_equal(
-#                                         numpy.asarray(s.to_physical()),
-#                                         numpy.asarray(p)
-#                                         )
-
-#     def test_z_zero(self):
-#         for N, padding in self.domains:
-#             with self.subTest(N=N, padding=padding):
-#                 for l in range(1, N//2):
-#                     for k in range(1, N//2):
-#                         with self.subTest(k=k, l=l):
-#                             theta = 2*numpy.pi*(numpy.random.random()-0.5)
-#                             s = SpectralArray((), *spectral_grid(N, padding))
-#                             s[k,l,0] = numpy.exp(1j*theta)
-#                             s[-k,-l,0] = s[k,l,0].conjugate()
-#                             p = PhysicalArray((), *spectral_grid(N, padding))
-#                             p[...] = 2*numpy.cos(
-#                                 k*p.x[0]+l*p.x[1]+theta
-#                                 )
-#                             with self.subTest(dir="forward"):
-#                                 nptest.assert_almost_equal(
-#                                     numpy.asarray(p.to_spectral()),
-#                                     numpy.asarray(s)
-#                                     )
-#                             with self.subTest(dir="backward"):
-#                                 nptest.assert_almost_equal(
-#                                     numpy.asarray(s.to_physical()),
-#                                     numpy.asarray(p)
-#                                     )
-
-#     def test_z_max(self):
-#         for N, padding in self.domains:
-#             with self.subTest(N=N, padding=padding):
-#                 if N % 2 == 0 and padding == 0:
-#                     for l in range(1, N//2):
-#                         for k in range(1, N//2):
-#                             with self.subTest(k=k, l=l):
-#                                 theta = 2*numpy.pi*(numpy.random.random()-0.5)
-#                                 s = SpectralArray((), *spectral_grid(N, padding))
-#                                 s[k,l,-(N//2)] = numpy.exp(1j*theta)
-#                                 s[-k,-l,-(N//2)] = s[k,l,N//2].conjugate()
-#                                 p = PhysicalArray((), *spectral_grid(N, padding))
-#                                 p[...] = 2*numpy.cos(
-#                                     k*p.x[0]+l*p.x[1]-(N//2)*p.x[2]+theta
-#                                     )
-#                                 with self.subTest(dir="forward"):
-#                                     nptest.assert_almost_equal(
-#                                         numpy.asarray(p.to_spectral()),
-#                                         numpy.asarray(s)
-#                                         )
-#                                 with self.subTest(dir="backward"):
-#                                     nptest.assert_almost_equal(
-#                                         numpy.asarray(s.to_physical()),
-#                                         numpy.asarray(p)
-#                                         )
-
-#     def test_corners(self):
-#         for N, padding in self.domains:
-#             with self.subTest(N=N, padding=padding):
-#                 if padding == 1 and N % 2 == 0:
-#                     r = [ 0, N // 2 ]
-#                 else:
-#                     r = [ 0 ]
-#                 for k in r:
-#                     for l in r:
-#                         for m in r:
-#                             with self.subTest(k=-k, l=-l, m=m):
-#                                 s = SpectralArray((), *spectral_grid(N, padding))
-#                                 s[-k,-l,m] = 1.0
-#                                 p = PhysicalArray((), *spectral_grid(N, padding))
-#                                 p[...] = numpy.cos(
-#                                     -k*p.x[0]-l*p.x[1]+m*p.x[2]
-#                                     )
-#                                 with self.subTest(dir="forward"):
-#                                     nptest.assert_almost_equal(
-#                                         numpy.asarray(p.to_spectral()),
-#                                         numpy.asarray(s)
-#                                         )
-#                                 with self.subTest(dir="backward"):
-#                                     nptest.assert_almost_equal(
-#                                         numpy.asarray(s.to_physical()),
-#                                         numpy.asarray(p)
-#                                         )
-
-#     def test_truncated(self):
-#         for N, padding in self.domains:
-#             with self.subTest(N=N, padding=padding):
-#                 s = SpectralArray((), *spectral_grid(N, padding))                
-#                 M = int(N*padding)
-#                 for m in range(0, M//2+1):
-#                     for l in range(-(M-1)//2, (M-1)//2+1):
-#                         for k in range(-(M-1)//2, (M-1)//2+1):
-#                             if ((l < -(N//2) or l > (N-1)//2) or #and #OR!
-#                                 (k < -(N//2) or k > (N-1)//2)):
-#                                 with self.subTest(k=k, l=l, m=m):
-#                                     theta = 2*numpy.pi*(numpy.random.random()-0.5)
-#                                     p = PhysicalArray((), *spectral_grid(N, padding))
-#                                     p[...] = 2*numpy.cos(
-#                                         k*p.x[0]+l*p.x[1]+m*p.x[2]+theta
-#                                         )
-#                                     #print("CHECK", k, l, m, N, padding,
-#                                      #         numpy.nonzero(numpy.around(p.to_spectral(),2)))
-#                                     nptest.assert_almost_equal(
-#                                         numpy.asarray(p.to_spectral()),
-#                                         numpy.asarray(s)
-#                                         )
+                                    # Interior points have a Hermitian
+                                    # symmetric ghost point that is
+                                    # not carried.
+                                    s[k, l, m] = numpy.exp(1j*theta)
+                                    p[...] = 2*numpy.cos(k*p.x[0]+l*p.x[1]+m*p.x[2]+theta)
+                                    type = 'interior'
+                                with self.subTest(type=type):
+                                    self.assert_forward_backward(p, s)
+                if skips:
+                    print(f"test_single_mode with N={N}, skipped {skips} tests, expected failure")
 
 
+@unittest.skipIf(
+    not use_mpi4py_fft_scaling,
+    "Not using MPI4Py-FFT scalings"
+)
 class TestMPI4PyFFT(unittest.TestCase):
     """Test that our transforms return the same results as mpi4py-fft.
     """
-    domains = [
-        ( (9, 9, 9), 1),
-        ( (8, 9, 9), 1),
-        ( (9, 8, 9), 1),
-        ( (8, 8, 9), 1),
-        ( (9, 9, 8), 1),
-        ( (8, 9, 8), 1),
-        ( (9, 8, 8), 1),
-        ( (8, 8, 8), 1),
-        ( (9, 9, 9), 1.5),
-        ( (8, 9, 9), 1.5),
-        ( (9, 8, 9), 1.5),
-        ( (8, 8, 9), 1.5),
-        ( (9, 9, 8), 1.5),
-        ( (8, 9, 8), 1.5),
-        ( (9, 8, 8), 1.5),
-        ( (8, 8, 8), 1.5),
-        ]
-
     def test_mpi4py_fft_forward(self):
         """Physical-to-spectral transforms match mpi4py-fft.
         """
-        for N, padding in self.domains:
+        for N, padding in _domains:
             with self.subTest(N=N, padding=padding):
                 fft = PFFT(
                     MPI.COMM_WORLD,
                     N,
-                    padding=3*[padding,],
+                    padding=padding,
                     axes=(0, 1, 2),
                     dtype=numpy.float,
                     grid=(-1,)
@@ -565,12 +634,12 @@ class TestMPI4PyFFT(unittest.TestCase):
     def test_mpi4py_fft_backward(self):
         """Spectral-to-physical transforms match mpi4py-fft.
         """
-        for N, padding in self.domains:
+        for N, padding in _domains:
             with self.subTest(N=N, padding=padding):
                 fft = PFFT(
                     MPI.COMM_WORLD,
                     N,
-                    padding=3*[padding,],
+                    padding=padding,
                     axes=(0, 1, 2),
                     dtype=numpy.float,
                     grid=(-1,)

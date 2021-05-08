@@ -30,6 +30,7 @@ version = '0.1'
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx.ext.autosectionlabel',
     'sphinx.ext.viewcode',
 ]
 
@@ -70,4 +71,8 @@ html_static_path = ['_static']
 # -- Options for autodoc extension -------------------------------------------
 
 autoclass_content = 'both'
-autodoc_member_order = 'bysource'
+autodoc_default_options = {
+    'inherited-members': False,
+    'member-order': 'bysource',
+    }
+autodoc_inherit_docstrings = False

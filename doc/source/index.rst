@@ -11,6 +11,7 @@ Here are some inspiring words of introduction.
 .. toctree::
    :maxdepth: 4
 
+   notes
    psdns
 
 

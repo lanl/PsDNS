@@ -259,6 +259,7 @@ class KEpsilon(NavierStokes):
             Ce1=1.44, Ce2=1.92, Cmu=0.09,
             Pr_k=1.0, Pr_e=1.4,
             k0=1e-3, eps0=1e-3,
+            clip=False,
             **kwargs
             ):
         super().__init__(**kwargs)
@@ -267,7 +268,8 @@ class KEpsilon(NavierStokes):
         self.Cmu = Cmu
         self.Pr_k = Pr_k
         self.Pr_e = Pr_e
-
+        self.clip = clip
+        
         uhat = SpectralArray((5,), self.uhat.k, self.uhat.x)
         uhat[:3] = self.uhat
         uhat[3] = 0
@@ -281,11 +283,11 @@ class KEpsilon(NavierStokes):
         # Clipping
         K = self.uhat[3].to_physical()
         epsilon = self.uhat[4].to_physical()
-        if numpy.amin(K) <= 0:
+        if self.clip and numpy.amin(K) <= 0:
             warnings.warn("negative K: clipping to 1e-12")
             K = K.clip(1e-12)
             self.uhat[3] = K.to_spectral()
-        if numpy.amin(epsilon) <= 0:
+        if self.clip and numpy.amin(epsilon) <= 0:
             warnings.warn("negative epsilon: clipping to 1e-12")
             K = K.clip(1e-12)
             epsilon = epsilon.clip(1e-12)

@@ -3,6 +3,8 @@
 This module defines the various spectral bases that can be used to
 write solvers.
 """
+import warnings
+
 import numpy
 
 """
@@ -26,6 +28,15 @@ There are three scenarios for creating a SpectralArray or PhysicalArray.
     f = lambda N: [*range(0, (N+1)//2), *range(-(N//2), 0)]
 
 """
+
+#: When truncating either of the first two axes to an even number of
+#: points, it is necessary to use a special treatment for the ``N//2``
+#: mode.  When this flag is set, the method used is the same as in the
+#: `mpi4py-fft <https://mpi4py-fft.readthedocs.io>`_ package.  Note
+#: that this method has some inconsistencies.  See :ref:`mpi4py-fft
+#: Compatability`.
+use_mpi4py_fft_scaling = False
+
 def spectral_grid(N, padding=1):
     # To do:
     #   1. Arguments for domain size
@@ -67,6 +78,10 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                 )
         self.k = k
         self.x = x
+        if k.shape[1] > x.shape[1] and k.shape[1] % 2 == 0:
+            warnings.warn("Using even number of modes in x: see the manual for why you don't want to do this")
+        if k.shape[2] > x.shape[2] and k.shape[2] % 2 == 0:
+            warnings.warn("Using even number of modes in y: see the manual for why you don't want to do this")
         self.shape = self._data.shape
 
     def __array__(self, dtype=None):
@@ -125,11 +140,11 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             self._data,
             axes = (-3,-2,-1),
             )
-        # One option for dealing with truncation:
-        if M[0] > N[0] and N[0] % 2 == 0:
-            s[...,-(N[0]//2),:,:] = s[...,N[0]//2,:,:]+s[...,-(N[0]//2),:,:]
-        if M[1] > N[1] and N[1] % 2 == 0:
-            s[...,:,-(N[1]//2),:] = s[...,:,N[1]//2,:]+s[...,:,-(N[1]//2),:]
+        if use_mpi4py_fft_scaling:
+            if M[0] > N[0] and N[0] % 2 == 0:
+                s[...,-(N[0]//2),:,:] = s[...,N[0]//2,:,:]+s[...,-(N[0]//2),:,:]
+            if M[1] > N[1] and N[1] % 2 == 0:
+                s[...,:,-(N[1]//2),:] = s[...,:,N[1]//2,:]+s[...,:,-(N[1]//2),:]
         return SpectralArray(
             s[...,i0[:,numpy.newaxis],i1,:N[2]]/self.x[0].size,
             self.k,
@@ -158,6 +173,10 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                 )
         self.k = k
         self.x = x
+        if k.shape[1] > x.shape[1] and k.shape[1] % 2 == 0:
+            warnings.warn("Using even number of modes in x: see the manual for why you don't want to do this")
+        if k.shape[2] > x.shape[2] and k.shape[2] % 2 == 0:
+            warnings.warn("Using even number of modes in y: see the manual for why you don't want to do this")
         self.shape = self._data.shape
 
     def __array__(self, dtype=None):
@@ -222,12 +241,26 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             dtype = complex
             )
         s[...,i0[:,numpy.newaxis],i1,:N[2]] = self
-        if M[0] > N[0] and N[0] % 2 == 0:
-            s[...,-(N[0]//2),:,:] *= 0.5
-            s[...,N[0]//2,:,:] = s[...,-(N[0]//2),:,:]
-        if M[1] > N[1] and N[1] % 2 == 0:
-            s[...,:,-(N[1]//2),:] *= 0.5
-            s[...,:,N[1]//2,:] = s[...,:,-(N[1]//2),:]
+        if use_mpi4py_fft_scaling:
+            if M[0] > N[0] and N[0] % 2 == 0:
+                s[...,-(N[0]//2),:,:] *= 0.5
+                s[...,N[0]//2,:,:] = s[...,-(N[0]//2),:,:]
+            if M[1] > N[1] and N[1] % 2 == 0:
+                s[...,:,-(N[1]//2),:] *= 0.5
+                s[...,:,N[1]//2,:] = s[...,:,-(N[1]//2),:]
+        else:
+            if M[0] > N[0] and N[0] % 2 == 0:
+                s[...,N[0]//2,1:,0] = numpy.conjugate(s[...,-(N[0]//2),-1:0:-1,0])
+                s[...,N[0]//2,0,0] = numpy.conjugate(s[...,-(N[0]//2),0,0])
+                if M[2] == 2*(N[2]-1):
+                    s[...,N[0]//2,1:,-1] = numpy.conjugate(s[...,-(N[0]//2),-1:0:-1,-1])
+                    s[...,N[0]//2,0,-1] = numpy.conjugate(s[...,-(N[0]//2),0,-1])
+            if M[1] > N[1] and N[1] % 2 == 0:
+                s[...,1:,N[1]//2,0] = numpy.conjugate(s[...,-1:0:-1,-(N[0]//2),0])
+                s[...,0,N[1]//2,0] = numpy.conjugate(s[...,0,-(N[0]//2),0])
+                if M[2] == 2*(N[2]-1):
+                    s[...,1:,N[1]//2,-1] = numpy.conjugate(s[...,-1:0:-1,-(N[0]//2),-1])
+                    s[...,0,N[1]//2,-1] = numpy.conjugate(s[...,0,-(N[0]//2),-1])
         return PhysicalArray(
             numpy.fft.irfftn(
                 s,

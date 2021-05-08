@@ -124,8 +124,8 @@ class TestDNS(unittest.TestCase):
             tfinal=10.0,
             equations=Equations(
                 Re=100,
-                N=2**5,
-                padding=1.5,
+                N=21,
+                padding=1.55,
             ),
             diagnostics=[
                 TestDiagnostics(tdump=0.1)
