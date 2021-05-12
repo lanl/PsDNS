@@ -80,6 +80,9 @@ class ImplicitEuler(Integrator):
         self.uhat0 = self.equations.uhat.copy()
         self.resfile = open("residual.dat", 'w')
 
+    def __del__(self):
+        self.resfile.close()
+
     def step(self):
         self.resfile.write("# Time = {}\n".format(self.time))
         self.uhat0[...] = self.equations.uhat
@@ -94,7 +97,7 @@ class ImplicitEuler(Integrator):
                 break
         self.resfile.write("\n\n")
 
-        
+
 class RungeKutta(Integrator):
     """An Runge-Kutta integrator
 

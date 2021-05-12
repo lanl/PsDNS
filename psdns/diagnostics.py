@@ -8,8 +8,17 @@ class Diagnostics(object):
     def __init__(self, tdump, outfile=sys.stderr):
         self.tdump = tdump
         self.lastdump = -1e9
-        self.outfile = outfile if hasattr(outfile, 'write') else open(outfile, 'w')
-        
+        if hasattr(outfile, 'write'):
+            self.outfile = outfile
+            self._needs_close = False
+        else:
+            self.outfile = open(outfile, 'w')
+            self._needs_close = True
+
+    def __del__(self):
+        if self._needs_close:
+            self.outfile.close()
+
     def __call__(self, time, equations, uhat):
         if time-self.lastdump<self.tdump-1e-8:
             return
