@@ -99,7 +99,7 @@ class TestDiagnostics(Diagnostics):
         self.dumps = []
     
     def diagnostic(self, time, equations, uhat):
-        eps = [ (1j*uhat.k[i]*uhat[j]).to_physical().norm()
+        eps = [ (1j*uhat.grid.k[i]*uhat[j]).to_physical().norm()
                 for i in range(3) for j in range(3) ]
         self.dumps.append( [ time, equations.nu*sum(eps) ] )
 

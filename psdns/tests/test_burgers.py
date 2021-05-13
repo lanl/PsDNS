@@ -5,7 +5,7 @@ matplotlib.use('PDF')
 import matplotlib.pylab as plt
 import numpy
 
-from psdns.bases import spectral_grid, PhysicalArray
+from psdns.bases import SpectralGrid, PhysicalArray
 from psdns.integrators import ImplicitEuler, RungeKutta
 
 
@@ -15,15 +15,14 @@ class Burgers(object):
     def __init__(self, N, padding, nu=1.0, **kwargs):
         super().__init__(**kwargs)
         self.nu = nu
-        u = PhysicalArray((), *spectral_grid(N, padding))
-        k = u.k
-        self.k2 = numpy.sum(k*k, axis=0)
-        u[...] = self.exact(u.x[0], 0)
+        u = PhysicalArray((), SpectralGrid(N, padding))
+        self.k2 = numpy.sum(u.grid.k*u.grid.k, axis=0)
+        u[...] = self.exact(u.grid.x[0], 0)
         self.uhat = u.to_spectral()
         
     def rhs(self):
         u = self.uhat.to_physical()
-        return -self.k2*self.nu*self.uhat + self.uhat.k[0]*(u*u).to_spectral()/2
+        return -self.k2*self.nu*self.uhat + self.uhat.grid.k[0]*(u*u).to_spectral()/2
 
     def exact(self, x, t):
         return 2*self.nu*numpy.sin(x)/(self.A*numpy.exp(self.nu*t)+numpy.cos(x))
@@ -44,13 +43,13 @@ class TestBurgers(unittest.TestCase):
             ),
         )
         plt.plot(
-            solver.equations.uhat.x[0,:,0,0],
+            solver.equations.uhat.grid.x[0,:,0,0],
             solver.equations.uhat.to_physical()[:,0,0],
             "-o",
             label="Initial Condition",
             )
         solver.run()
-        x = solver.equations.uhat.x[0,:,0,0]
+        x = solver.equations.uhat.grid.x[0,:,0,0]
         plt.plot(
             x,
             solver.equations.uhat.to_physical()[:,0,0],
@@ -79,7 +78,7 @@ class TestBurgers(unittest.TestCase):
                     ),
                 )
             solver.run()
-            x = solver.equations.uhat.x[0]
+            x = solver.equations.uhat.grid.x[0]
             plt.loglog(
                 n,
                 numpy.linalg.norm(

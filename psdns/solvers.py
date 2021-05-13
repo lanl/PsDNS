@@ -2,7 +2,7 @@ import warnings
 
 import numpy
 
-from .bases import spectral_grid, PhysicalArray, SpectralArray
+from .bases import SpectralGrid, PhysicalArray, SpectralArray
 
 
 class NavierStokes(object):
@@ -72,7 +72,7 @@ class NavierStokes(object):
         self.Re = Re
         self.nu = 1/Re
 
-        k = self.uhat.k
+        k = self.uhat.grid.k
         self.k2 = numpy.sum(k*k, axis=0)
         self.P = (numpy.eye(3)[:,:,None,None,None]
                  -k[None,...]*k[:,None,...]/numpy.where(self.k2==0, 1, self.k2))
@@ -81,7 +81,7 @@ class NavierStokes(object):
         u = self.uhat.to_physical()
         vorticity = self.uhat.curl().to_physical()
         nl = numpy.cross(u, vorticity, axis=0)
-        nl = PhysicalArray(nl, self.uhat.k, self.uhat.x).to_spectral()
+        nl = PhysicalArray(nl, self.uhat.grid).to_spectral()
         du = numpy.einsum("ij...,j...->i...", self.P, nl)
         du -= self.nu*self.k2*self.uhat
         return du
@@ -118,7 +118,7 @@ class SimplifiedSmagorinsky(NavierStokes):
         vorticity = self.uhat.curl()
         nu_t = (self.Cs*self.dx)**2*numpy.sqrt(numpy.sum(vorticity.norm()))
         nl = numpy.cross(u, vorticity.to_physical(), axis=0)
-        nl = PhysicalArray(nl, self.uhat.k, self.uhat.x).to_spectral()
+        nl = PhysicalArray(nl, self.uhat.grid).to_spectral()
         du = numpy.einsum("ij...,j...->i...", self.P, nl)
         du -= (self.nu+nu_t)*self.k2*self.uhat
         return du
@@ -176,9 +176,9 @@ class Smagorinsky(SimplifiedSmagorinsky):
         gradu = self.uhat.grad().to_physical()
         Sij = ((gradu + gradu.transpose(1,0))/2)
         nu_t = (self.Cs*self.dx)**2*numpy.sqrt(numpy.sum(Sij*Sij, axis=(0,1)))
-        nl1 = numpy.einsum("k...,jk...->j...", self.uhat.k, (nu_t*gradu).to_spectral())
+        nl1 = numpy.einsum("k...,jk...->j...", self.uhat.grid.k, (nu_t*gradu).to_spectral())
         nl2 = numpy.einsum("k...,jk...->j...", u, gradu)
-        nl2 = PhysicalArray(nl2, self.uhat.k, self.uhat.x).to_spectral()
+        nl2 = PhysicalArray(nl2, self.uhat.grid).to_spectral()
         nl = 1j*nl1 - nl2
         du = numpy.einsum("ij...,j...->i...", self.P, nl)        
         du -= self.nu*self.k2*self.uhat
@@ -194,8 +194,8 @@ class TaylorGreenIC(object):
         assert isinstance(c, int), "Wavenumbers must be integers."
         assert A*a+B*b+C*c == 0, "Initial condition does not satisfy continuity."
 
-        k, x = spectral_grid(N, padding)
-        u = PhysicalArray([3,], k, x)
+        u = PhysicalArray([3,], SpectralGrid(N, padding))
+        x = u.grid.x
         
         u[0] = A*numpy.cos(a*x[0])*numpy.sin(b*x[1])*numpy.sin(c*x[2])
         u[1] = B*numpy.sin(a*x[0])*numpy.cos(b*x[1])*numpy.sin(c*x[2])
@@ -270,7 +270,7 @@ class KEpsilon(NavierStokes):
         self.Pr_e = Pr_e
         self.clip = clip
         
-        uhat = SpectralArray((5,), self.uhat.k, self.uhat.x)
+        uhat = SpectralArray((5,), self.uhat.grid)
         uhat[:3] = self.uhat
         uhat[3] = 0
         uhat[4] = 0
@@ -299,9 +299,9 @@ class KEpsilon(NavierStokes):
         # Momentum equation
         u = self.uhat[:3].to_physical()
         gradu = self.uhat[:3].grad().to_physical()
-        nl1 = numpy.einsum("k...,jk...->j...", self.uhat.k, (nu_t*gradu).to_spectral())
+        nl1 = numpy.einsum("k...,jk...->j...", self.uhat.grid.k, (nu_t*gradu).to_spectral())
         nl2 = numpy.einsum("k...,jk...->j...", u, gradu)
-        nl2 = PhysicalArray(nl2, self.uhat.k, self.uhat.x).to_spectral()
+        nl2 = PhysicalArray(nl2, self.uhat.grid).to_spectral()
         nl = 1j*nl1 - nl2
         du = numpy.einsum("ij...,j...->i...", self.P, nl)        
         du -= self.nu*self.k2*self.uhat[:3]
@@ -313,16 +313,16 @@ class KEpsilon(NavierStokes):
         # K equation
         gradk = self.uhat[3].grad().to_physical()
         dk = P - epsilon - numpy.einsum("i...,i...", u, gradk)
-        dk = PhysicalArray(dk, self.uhat.k, self.uhat.x).to_spectral()
-        dk += 1j*numpy.einsum("i...,i...", self.uhat.k, (nu_t/self.Pr_k*gradk).to_spectral())
+        dk = PhysicalArray(dk, self.uhat.grid).to_spectral()
+        dk += 1j*numpy.einsum("i...,i...", self.uhat.grid.k, (nu_t/self.Pr_k*gradk).to_spectral())
         dk -= self.nu*self.k2*self.uhat[3]
 
         # epsilon equation
         grade = self.uhat[4].grad().to_physical()
         de = epsilon/K*(self.Ce1*P - self.Ce2*epsilon) \
           - numpy.einsum("i...,i...", u, grade)
-        de = PhysicalArray(de, self.uhat.k, self.uhat.x).to_spectral()
-        de += 1j*numpy.einsum("i...,i...", self.uhat.k, (nu_t/self.Pr_e*grade).to_spectral())
+        de = PhysicalArray(de, self.uhat.grid).to_spectral()
+        de += 1j*numpy.einsum("i...,i...", self.uhat.grid.k, (nu_t/self.Pr_e*grade).to_spectral())
         de -= self.nu*self.k2*self.uhat[4]
 
         return numpy.concatenate(

@@ -8,18 +8,17 @@ import numpy
 from numpy import testing as nptest
 
 
-from psdns.bases import PhysicalArray, SpectralArray, spectral_grid
+from psdns.bases import PhysicalArray, SpectralArray, SpectralGrid
 from psdns.integrators import ImplicitEuler
 from psdns.solvers import KEpsilon
 
 
 class ShearLayer(KEpsilon):
     def __init__(self, N, padding, tdump, t0=0, **kwargs):
+        grid = SpectralGrid(N, padding)
         self.tdump = tdump
         self.lastdump = -1e9
-
-        k, x = spectral_grid(N, padding)
-        self.uhat = SpectralArray([3,], k, x)
+        self.uhat = SpectralArray([3,], grid)
 
         kwargs['Pr_k'] = 1.0
         kwargs['Pr_e'] = 1.0
@@ -32,7 +31,7 @@ class ShearLayer(KEpsilon):
         self.t0 = t0
 
         u, K, e = self.exact(0)
-        U = PhysicalArray([5,], k, x)
+        U = PhysicalArray([5,], grid)
         U[0] = u
         U[1] = 0
         U[2] = 0
@@ -42,7 +41,7 @@ class ShearLayer(KEpsilon):
 
     def exact(self, time):
         h = self.dhdt*(time+self.t0)
-        eta = numpy.arcsin(numpy.sin(self.uhat.x[1]))/h
+        eta = numpy.arcsin(numpy.sin(self.uhat.grid.x[1]))/h
         u = self.dU/2*eta.clip(min=-1, max=1)
         K = (self.kstar*self.dU**2*(1-eta**2)).clip(min=1e-12)
         e = (self.estar*self.dU**3/h*(1-eta**2)).clip(min=1e-12)
@@ -69,20 +68,20 @@ class TestRANS(unittest.TestCase):
         exact = solver.equations.exact(solver.time)
         u = solver.equations.uhat.to_physical()
         plt.subplot(311)
-        plt.plot(u.x[1,0,:,0], exact[0][0,:,0], label="Exact solution")
-        plt.plot(u.x[1,0,:,0], u[0,0,:,0], '+', label="Computed solution")
+        plt.plot(u.grid.x[1,0,:,0], exact[0][0,:,0], label="Exact solution")
+        plt.plot(u.grid.x[1,0,:,0], u[0,0,:,0], '+', label="Computed solution")
         plt.title("Comparision to exact solution")
         plt.xticks([])
         plt.ylabel("Velocity")
         plt.legend()
         plt.subplot(312)
-        plt.plot(u.x[1,0,:,0], exact[1][0,:,0], label="Exact solution")
-        plt.plot(u.x[1,0,:,0], u[3,0,:,0], '+', label="Computed solution")
+        plt.plot(u.grid.x[1,0,:,0], exact[1][0,:,0], label="Exact solution")
+        plt.plot(u.grid.x[1,0,:,0], u[3,0,:,0], '+', label="Computed solution")
         plt.xticks([])
         plt.ylabel("TKE")
         plt.subplot(313)
-        plt.plot(u.x[1,0,:,0], exact[2][0,:,0], label="Exact solution")
-        plt.plot(u.x[1,0,:,0], u[4,0,:,0], '+', label="Computed solution")
+        plt.plot(u.grid.x[1,0,:,0], exact[2][0,:,0], label="Exact solution")
+        plt.plot(u.grid.x[1,0,:,0], u[4,0,:,0], '+', label="Computed solution")
         plt.xlabel("Y")
         plt.ylabel("Dissipation")
         plt.savefig("ShearLayer.pdf")
