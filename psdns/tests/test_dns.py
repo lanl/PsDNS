@@ -124,8 +124,8 @@ class TestDNS(unittest.TestCase):
             tfinal=10.0,
             equations=Equations(
                 Re=100,
-                N=21,
-                padding=1.55,
+                sdims=2**4-1,
+                pdims=3*2**3,
             ),
             diagnostics=[
                 TestDiagnostics(tdump=0.1)
@@ -143,5 +143,5 @@ class TestDNS(unittest.TestCase):
         nptest.assert_allclose(
             output[1],
             numpy.interp(output[0], brachet_data[0], brachet_data[1]),
-            rtol=0.02, atol=0
+            rtol=0.06, atol=0
             )

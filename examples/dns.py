@@ -19,8 +19,8 @@ solver = RungeKutta(
     tfinal=10.0,
     equations=Equations(
         Re=400,
-        N=2**6,
-        padding=1.5,
+        sdims=2**6-1,
+        pdims=3*2**5,
         ),
     diagnostics=[
         StandardDiagnostics(tdump=0.1, outfile="tgv.dat"),

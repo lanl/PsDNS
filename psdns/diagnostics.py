@@ -48,27 +48,27 @@ class StandardDiagnostics(Diagnostics):
     
     def dissipation(self, equations, uhat):
         return 2*equations.nu*sum(
-            [ (1j*uhat.k[i]*uhat[j]).norm()
+            [ (1j*uhat.grid.k[i]*uhat[j]).norm()
               for i in range(3) for j in range(3) ]
             )
 
     def G(self, equations, uhat):
         return sum( [
-            (-uhat.k[j]*uhat.k[l]*uhat[i]).norm()
+            (-uhat.grid.k[j]*uhat.grid.k[l]*uhat[i]).norm()
             for i in range(3) for j in range(3)
             for l in range(3)
             ] )
    
     def G3(self, equations, uhat):
         return sum( [
-            (-1j*uhat.k[j]*uhat.k[l]*uhat.k[m]*uhat[i]).norm()
+            (-1j*uhat.grid.k[j]*uhat.grid.k[l]*uhat.grid.k[m]*uhat[i]).norm()
             for i in range(3) for j in range(3)
             for l in range(3) for m in range(3)
             ] )
 
     def G4(self, equations, uhat):
         return sum( [
-            (uhat.k[j]*uhat.k[l]*uhat.k[m]*uhat.k[n]*uhat[i]).norm()
+            (uhat.grid.k[j]*uhat.grid.k[l]*uhat.grid.k[m]*uhat.grid.k[n]*uhat[i]).norm()
             for i in range(3) for j in range(3)
             for l in range(3) for m in range(3)
             for n in range(3)
@@ -76,7 +76,7 @@ class StandardDiagnostics(Diagnostics):
 
     def G5(self, equations, uhat):
         return sum( [
-            (1j*uhat.k[j]*uhat.k[l]*uhat.k[m]*uhat.k[n]*uhat.k[o]*uhat[i]).norm()
+            (1j*uhat.grid.k[j]*uhat.grid.k[l]*uhat.grid.k[m]*uhat.grid.k[n]*uhat.grid.k[o]*uhat[i]).norm()
             for i in range(3) for j in range(3)
             for l in range(3) for m in range(3)
             for n in range(3) for o in range(3)
@@ -93,7 +93,7 @@ class StandardDiagnostics(Diagnostics):
 
 class Spectra(Diagnostics):
     def diagnostic(self, time, equations, uhat):
-        kmag = numpy.sqrt(numpy.sum(uhat.k**2, axis=0))
+        kmag = numpy.sqrt(numpy.sum(uhat.grid.k**2, axis=0))
         kmax = numpy.amax(kmag)
         nbins = int(max(kmag.shape)/2)
         dk = kmax/nbins

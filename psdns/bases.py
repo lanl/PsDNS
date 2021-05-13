@@ -29,15 +29,13 @@ There are three scenarios for creating a SpectralArray or PhysicalArray.
 
 """
 class SpectralGrid(object):
-    def __init__(self, N, padding=1, aliasing_strategy=''):
+    def __init__(self, sdims, pdims=None, aliasing_strategy=''):
         """Return a new :class:`SpectralGrid` object.
 
-        Pre-text.
-
-        :param N: The size of the grid
-        :type N: int or tuple(int)
-        :param padding:
-        :type padding: float or tuple(float)
+        :param pdims: The size of the grid
+        :type pdims: int or tuple(int)
+        :param sdims: 
+        :type sdims: int or tuple(int)
         :param aliasing_strategy: When truncating either of the first
           two axes to an even number of points, it is necessary to use a
           special treatment for the ``N//2`` mode.  When this flag is
@@ -45,27 +43,26 @@ class SpectralGrid(object):
           `mpi4py-fft <https://mpi4py-fft.readthedocs.io>`_ package.  Note
           that this method has some inconsistencies.  See :ref:`mpi4py-fft
           Compatability`.
-        :type aliasing_strategy: 'mpi4py'
-
+        :type aliasing_strategy: '' (default) or 'mpi4py'
 
         Post text.
 
-        :param more: more paramters
+
         """
         # To do:
         #   1. Arguments for domain size
         #   3. Support for 1, 2, or 3-d.
         self._aliasing_strategy = aliasing_strategy
-        N = numpy.broadcast_to(numpy.atleast_1d(N), (3,))
-        padding = numpy.broadcast_to(numpy.atleast_1d(padding), (3,))
-        xdims = (N*padding).astype(int)
-        self.x = (2*numpy.pi/xdims[:,numpy.newaxis,numpy.newaxis,numpy.newaxis,]) \
-          *numpy.mgrid[:xdims[0],:xdims[1],:xdims[2]]
-        k = numpy.mgrid[:N[0],:N[1],:N[2]//2+1]
+        self.sdims = numpy.broadcast_to(numpy.atleast_1d(sdims), (3,))
+        self.pdims = numpy.broadcast_to(numpy.atleast_1d(pdims), (3,)) \
+          if pdims else self.sdims
+        self.x = (2*numpy.pi/self.pdims[:,numpy.newaxis,numpy.newaxis,numpy.newaxis,]) \
+          *numpy.mgrid[:self.pdims[0],:self.pdims[1],:self.pdims[2]]
+        k = numpy.mgrid[:self.sdims[0],:self.sdims[1],:self.sdims[2]//2+1]
         # Note, use sample spacing/2pi to get radial frequencies, rather than circular frequencies.
-        fftfreq0 = numpy.fft.fftfreq(xdims[0], 1/xdims[0])[[*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)]]
-        fftfreq1 = numpy.fft.fftfreq(xdims[1], 1/xdims[1])[[*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)]]
-        rfftfreq = numpy.fft.rfftfreq(xdims[2], 1/xdims[2])[:N[2]//2+1]
+        fftfreq0 = numpy.fft.fftfreq(self.pdims[0], 1/self.pdims[0])[[*range(0, (self.sdims[0]+1)//2), *range(-(self.sdims[0]//2), 0)]]
+        fftfreq1 = numpy.fft.fftfreq(self.pdims[1], 1/self.pdims[1])[[*range(0, (self.sdims[1]+1)//2), *range(-(self.sdims[1]//2), 0)]]
+        rfftfreq = numpy.fft.rfftfreq(self.pdims[2], 1/self.pdims[2])[:self.sdims[2]//2+1]
         self.k = numpy.array( [
             fftfreq0[k[0]],
             fftfreq1[k[1]],

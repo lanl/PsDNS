@@ -12,10 +12,10 @@ from psdns.integrators import ImplicitEuler, RungeKutta
 class Burgers(object):
     A = 2
     
-    def __init__(self, N, padding, nu=1.0, **kwargs):
+    def __init__(self, sdims, pdims=None, nu=1.0, **kwargs):
         super().__init__(**kwargs)
         self.nu = nu
-        u = PhysicalArray((), SpectralGrid(N, padding))
+        u = PhysicalArray((), SpectralGrid(sdims, pdims))
         self.k2 = numpy.sum(u.grid.k*u.grid.k, axis=0)
         u[...] = self.exact(u.grid.x[0], 0)
         self.uhat = u.to_spectral()
@@ -38,8 +38,7 @@ class TestBurgers(unittest.TestCase):
             alpha=0.2,
             equations=Burgers(
                 nu=0.1,
-                N=[ 2**8, 1, 1 ],
-                padding=1,
+                sdims=[ 2**8, 1, 1 ],
             ),
         )
         plt.plot(
@@ -73,8 +72,7 @@ class TestBurgers(unittest.TestCase):
                 tfinal=1.0,
                 equations=Burgers(
                     nu=1.0,
-                    N=[ 2**n, 1, 1 ],
-                    padding=1,
+                    sdims=[ 2**n, 1, 1 ],
                     ),
                 )
             solver.run()

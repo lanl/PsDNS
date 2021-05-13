@@ -14,23 +14,23 @@ _domains = [
     #: A list of domains on which to run individual tests.  Each domain
     #: is a 2-tuple which is passed as the arguments to the
     #: :class:`~psdns.bases.SpectralGrid` constructor.
-    ( (9, 9, 9), [1, 1, 1]),
-    ( (8, 9, 9), [1, 1, 1]),
-    ( (9, 8, 9), [1, 1, 1]),
-    ( (8, 8, 9), [1, 1, 1]),
-    ( (9, 9, 8), [1, 1, 1]),
-    ( (8, 9, 8), [1, 1, 1]),
-    ( (9, 8, 8), [1, 1, 1]),
-    ( (8, 8, 8), [1, 1, 1]),
-    ( (9, 9, 9), [1.5, 1.5, 1.5]),
-    ( (8, 9, 9), [1.5, 1.5, 1.5]),
-    ( (9, 8, 9), [1.5, 1.5, 1.5]),
-    ( (8, 8, 9), [1.5, 1.5, 1.5]),
-    ( (9, 9, 8), [1.5, 1.5, 1.5]),
-    ( (8, 9, 8), [1.5, 1.5, 1.5]),
-    ( (9, 8, 8), [1.5, 1.5, 1.5]),
-    ( (8, 8, 8), [1.5, 1.5, 1.5]),
-    ( (8, 8, 8), [1.5, 1.5, 1]),
+    ( (9, 9, 9), (9, 9, 9) ),
+    ( (8, 9, 9), (8, 9, 9) ),
+    ( (9, 8, 9), (9, 8, 9) ),
+    ( (8, 8, 9), (8, 8, 9) ),
+    ( (9, 9, 8), (9, 9, 8) ),
+    ( (8, 9, 8), (8, 9, 8) ),
+    ( (9, 8, 8), (9, 8, 8) ),
+    ( (8, 8, 8), (8, 8, 8) ),
+    ( (9, 9, 9), (12, 12, 12) ),
+    ( (8, 9, 9), (12, 12, 12) ),
+    ( (9, 8, 9), (12, 12, 12) ),
+    ( (8, 8, 9), (12, 12, 12) ),
+    ( (9, 9, 8), (12, 12, 12) ),
+    ( (8, 9, 8), (12, 12, 12) ),
+    ( (9, 8, 8), (12, 12, 12) ),
+    ( (8, 8, 8), (12, 12, 12) ),
+    ( (8, 8, 8), (12, 12, 8) ),
     ]
 
 
@@ -55,11 +55,11 @@ class TestSymmetries(unittest.TestCase):
     """
     def test_z_zero(self):
         r"""Test Hermitian symmetry when z=0"""
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
-                s = random_spectral_array(SpectralGrid(N, padding))
-                for k in range(1, N[0]//2):
-                    for l in range(1, N[1]//2):
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
+                s = random_spectral_array(SpectralGrid(sdims, pdims))
+                for k in range(1, sdims[0]//2):
+                    for l in range(1, sdims[1]//2):
                         with self.subTest(k=k, l=l):
                             self.assertAlmostEqual(
                                 s[k, l, 0],
@@ -68,12 +68,12 @@ class TestSymmetries(unittest.TestCase):
 
     def test_z_max(self):
         r"""Test Hermitian symmetry when z=Nz/2"""
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
-                if N[2] % 2 == 0:
-                    s = random_spectral_array(SpectralGrid(N, padding))
-                    for k in range(1, N[0]//2):
-                        for l in range(1, N[1]//2):
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
+                if sdims[2] % 2 == 0:
+                    s = random_spectral_array(SpectralGrid(sdims, pdims))
+                    for k in range(1, sdims[0]//2):
+                        for l in range(1, sdims[1]//2):
                             with self.subTest(k=k, l=l):
                                 self.assertAlmostEqual(
                                     s[k, l, 0],
@@ -82,12 +82,12 @@ class TestSymmetries(unittest.TestCase):
 
     def test_real_corners(self):
         r"""Test for real values in corners"""
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
-                s = random_spectral_array(SpectralGrid(N, padding))
-                for k in [ 0, -N[0]//2 ] if padding[0] == 1 and N[0] % 2 == 0 else [ 0 ]:
-                    for l in [ 0, -N[1]//2 ] if padding[1] == 1 and N[1] % 2 == 0 else [ 0 ]:
-                        for m in [ 0, N[2]//2 ] if padding[2] == 1 and N[2] % 2 == 0 else [ 0 ]:
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
+                s = random_spectral_array(SpectralGrid(sdims, pdims))
+                for k in [ 0, -sdims[0]//2 ] if sdims[0] == pdims[0] and sdims[0] % 2 == 0 else [ 0 ]:
+                    for l in [ 0, -sdims[1]//2 ] if sdims[1] == pdims[1] and sdims[1] % 2 == 0 else [ 0 ]:
+                        for m in [ 0, sdims[2]//2 ] if sdims[2] == pdims[2] and sdims[2] % 2 == 0 else [ 0 ]:
                             with self.subTest(k=k, l=l, m=m):
                                 self.assertAlmostEqual(s[k, l, m].imag, 0)
 
@@ -98,9 +98,9 @@ class TestProperties(unittest.TestCase):
     def test_round_trip1(self):
         """Transforming to spectral and back to physical returns the original value.
         """
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
-                p = random_physical_array(SpectralGrid(N, padding))
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
+                p = random_physical_array(SpectralGrid(sdims, pdims))
                 nptest.assert_allclose(
                     numpy.asarray(p.to_spectral().to_physical()),
                     numpy.asarray(p)
@@ -109,9 +109,9 @@ class TestProperties(unittest.TestCase):
     def test_round_trip2(self):
         """Transforming to physical and back to spectral returns the original value.
         """
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
-                s = random_spectral_array(SpectralGrid(N, padding))
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
+                s = random_spectral_array(SpectralGrid(sdims, pdims))
                 nptest.assert_allclose(
                     numpy.asarray(s.to_physical().to_spectral()),
                     numpy.asarray(s)
@@ -120,9 +120,9 @@ class TestProperties(unittest.TestCase):
     def test_linear1(self):
         """Physical-to-spectral transforms are linear.
         """
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
-                grid = SpectralGrid(N, padding)
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
+                grid = SpectralGrid(sdims, pdims)
                 p1 = random_physical_array(grid)
                 p2 = random_physical_array(grid)
                 a = numpy.random.rand()
@@ -134,9 +134,9 @@ class TestProperties(unittest.TestCase):
     def test_linear2(self):
         """Spectral-to-physical transforms are linear.
         """
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
-                grid = SpectralGrid(N, padding)
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
+                grid = SpectralGrid(sdims, pdims)
                 s1 = random_spectral_array(grid)
                 s2 = random_spectral_array(grid)
                 a = numpy.random.rand()
@@ -154,13 +154,13 @@ class TestProperties(unittest.TestCase):
             domains are not tested, because of an inconsistency in the
             treatment of certain modes, see :meth:`test_norm_pointwise`.
         """
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
-                s = random_spectral_array(SpectralGrid(N, padding))
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
+                s = random_spectral_array(SpectralGrid(sdims, pdims))
                 if (s.grid._aliasing_strategy in [ '', 'mpi4py' ] and
                     ((s.grid.x.shape[1] > s.grid.k.shape[1] and s.grid.k.shape[1] % 2 == 0) or
                      (s.grid.x.shape[2] > s.grid.k.shape[2] and s.grid.k.shape[2] % 2 == 0))):
-                    print(f"skipping test_norm with N={N}, expected failure")
+                    print(f"skipping test_norm with sdims={sdims}, pdims={pdims}: expected failure")
                     continue
                 self.assertAlmostEqual(
                     s.norm(),
@@ -176,13 +176,13 @@ class TestProperties(unittest.TestCase):
             domains are not tested, because of an inconsistency in the
             treatment of certain modes, see :meth:`test_norm_pointwise`.
         """
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
-                p = random_physical_array(SpectralGrid(N, padding))
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
+                p = random_physical_array(SpectralGrid(sdims, pdims))
                 if (p.grid._aliasing_strategy in [ '', 'mpi4py' ] and
                     ((p.grid.x.shape[1] > p.grid.k.shape[1] and p.grid.k.shape[1] % 2 == 0) or
                      (p.grid.x.shape[2] > p.grid.k.shape[2] and p.grid.k.shape[2] % 2 == 0))):
-                    print(f"skipping test_norm with N={N}, expected failure")
+                    print(f"skipping test_norm with sdims={sdims}, pdims={pdims}: expected failure")
                     continue
                 self.assertAlmostEqual(
                     p.norm(),
@@ -264,7 +264,7 @@ class TestProperties(unittest.TestCase):
     #     However,
     #     """
     #     for N, padding in _domains:
-    #         with self.subTest(N=N, padding=padding):
+    #         with self.subTest(sdims=sdims, pdims=pdims):
     #             skips = 0
     #             for k in range(-(N[0]//2), (N[0]+1)//2):
     #                 for l in range(-(N[1]//2), (N[1]+1)//2):
@@ -514,15 +514,14 @@ class TestSingleMode(unittest.TestCase):
         conjugate of the retained mode.
 
         """
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
                 skips = 0
-                M = (numpy.asarray(N)*numpy.asarray(padding)).astype(int)
-                for k in range(-(M[0]//2), (M[0]+1)//2):
-                    for l in range(-(M[1]//2), (M[1]+1)//2):
-                        for m in range(M[2]//2+1):
+                for k in range(-(pdims[0]//2), (pdims[0]+1)//2):
+                    for l in range(-(pdims[1]//2), (pdims[1]+1)//2):
+                        for m in range(pdims[2]//2+1):
                             with self.subTest(k=k, l=l, m=m):
-                                grid = SpectralGrid(N, padding)
+                                grid = SpectralGrid(sdims, pdims)
                                 s = SpectralArray((), grid)
                                 p = PhysicalArray((), grid)
                                 if (grid._aliasing_strategy in [ '', 'mpi4py' ] and
@@ -531,9 +530,9 @@ class TestSingleMode(unittest.TestCase):
                                     skips += 1
                                     continue
                                 theta = numpy.random.rand()
-                                if ((-2*k > N[0] or 2*k > N[0]-1) or
-                                    (-2*l > N[1] or 2*l > N[1]-1) or
-                                    2*m > N[2]):
+                                if ((-2*k > sdims[0] or 2*k > sdims[0]-1) or
+                                    (-2*l > sdims[1] or 2*l > sdims[1]-1) or
+                                    2*m > sdims[2]):
                                     # Truncated modes
                                     p[...] = 2*numpy.cos(k*p.grid.x[0]+l*p.grid.x[1]+m*p.grid.x[2]+theta)
                                     # If the truncated mode is k==4, and m==0
@@ -541,9 +540,9 @@ class TestSingleMode(unittest.TestCase):
                                     # actually zero, because there is
                                     # content in the k==-4 mode, which
                                     # is retained.
-                                    if (((2*k==N[0] and 2*abs(l)<=N[1]) or 
-                                         (2*l==N[1] and 2*abs(k)<=N[0])) and
-                                        (m==0 or 2*m == M[2] == N[2])):
+                                    if (((2*k==sdims[0] and 2*abs(l)<=sdims[1]) or 
+                                         (2*l==sdims[1] and 2*abs(k)<=sdims[0])) and
+                                        (m==0 or 2*m == pdims[2] == sdims[2])):
                                         s[-k,-l,m] = numpy.exp(-1j*theta)
                                         with self.subTest(type='HS pos'):
                                             self.assert_forward_backward(p, s)
@@ -554,20 +553,20 @@ class TestSingleMode(unittest.TestCase):
                                             numpy.asarray(s)
                                             )
                                     continue
-                                elif (((M[0]>N[0] and -2*k==N[0] and 2*abs(l)<=N[1]) or
-                                       (M[1]>N[1] and -2*l==N[1] and 2*abs(k)<=N[0])) and
-                                      (m==0 or 2*m == N[2])):
+                                elif (((pdims[0]>sdims[0] and -2*k==sdims[0] and 2*abs(l)<=sdims[1]) or
+                                       (pdims[1]>sdims[1] and -2*l==sdims[1] and 2*abs(k)<=sdims[0])) and
+                                      (m==0 or 2*m == sdims[2])):
                                     s[k,l,m] = numpy.exp(1j*theta)
                                     p[...] = 2*numpy.cos(k*p.grid.x[0]+l*p.grid.x[1]+m*p.grid.x[2]+theta)
                                     type = 'HS neg'
-                                elif ((k == 0 or -2*k == M[0]) and
-                                      (l == 0 or -2*l == M[1]) and
-                                      (m == 0 or 2*m == M[2] == N[2])):
+                                elif ((k == 0 or -2*k == pdims[0]) and
+                                      (l == 0 or -2*l == pdims[1]) and
+                                      (m == 0 or 2*m == pdims[2] == sdims[2])):
                                     # Corner points must be real
                                     s[k, l, m] = 1.0
                                     p[...] = numpy.cos(k*p.grid.x[0]+l*p.grid.x[1]+m*p.grid.x[2])
                                     type = 'corner'
-                                elif m == 0 or 2*m == M[2]:
+                                elif m == 0 or 2*m == pdims[2]:
                                     # Edge points must have a
                                     # Hermitian symmetric mode in the
                                     # spectral array.
@@ -599,7 +598,7 @@ class TestSingleMode(unittest.TestCase):
                                 with self.subTest(type=type):
                                     self.assert_forward_backward(p, s)
                 if skips:
-                    print(f"test_single_mode with N={N}, skipped {skips} tests, expected failure")
+                    print(f"test_single_mode skipping {skips} subtests with sdims={sdims}, pdims={pdims}: expected failure")
 
 
 class TestMPI4PyFFT(unittest.TestCase):
@@ -608,17 +607,17 @@ class TestMPI4PyFFT(unittest.TestCase):
     def test_mpi4py_fft_forward(self):
         """Physical-to-spectral transforms match mpi4py-fft.
         """
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
                 fft = PFFT(
                     MPI.COMM_WORLD,
-                    N,
-                    padding=padding,
+                    sdims,
+                    padding=numpy.asarray(pdims)/numpy.asarray(sdims),
                     axes=(0, 1, 2),
                     dtype=numpy.float,
                     grid=(-1,)
                     )
-                p = random_physical_array(SpectralGrid(N, padding, aliasing_strategy='mpi4py'))
+                p = random_physical_array(SpectralGrid(sdims, pdims, aliasing_strategy='mpi4py'))
                 u = newDistArray(fft, False)
                 u[...] = p
                 u_hat = fft.forward(u, normalize=True)
@@ -631,17 +630,17 @@ class TestMPI4PyFFT(unittest.TestCase):
     def test_mpi4py_fft_backward(self):
         """Spectral-to-physical transforms match mpi4py-fft.
         """
-        for N, padding in _domains:
-            with self.subTest(N=N, padding=padding):
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
                 fft = PFFT(
                     MPI.COMM_WORLD,
-                    N,
-                    padding=padding,
+                    sdims,
+                    padding=numpy.asarray(pdims)/numpy.asarray(sdims),
                     axes=(0, 1, 2),
                     dtype=numpy.float,
                     grid=(-1,)
                     )
-                s = random_spectral_array(SpectralGrid(N, padding, aliasing_strategy='mpi4py'))
+                s = random_spectral_array(SpectralGrid(sdims, pdims, aliasing_strategy='mpi4py'))
                 u_hat = newDistArray(fft, True)
                 u_hat[...] = s
                 u = fft.backward(u_hat, normalize=False)

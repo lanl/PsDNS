@@ -17,7 +17,7 @@ class Integrator(object):
     shoud override the :meth:`step` method to implement the time
     advancement scheme.
     """
-    def __init__(self, equations, dt, tfinal, diagnostics=[]):
+    def __init__(self, equations, dt, tfinal, t0=0.0, diagnostics=[]):
         """Initialize an Integrator
 
         :params real dt: The timestep
@@ -29,7 +29,7 @@ class Integrator(object):
         #: Simulation stop time
         self.tfinal = tfinal
         #: Current simulation time
-        self.time = 0
+        self.time = t0
         self.diagnostics_list = diagnostics
 
     def diagnostics(self):

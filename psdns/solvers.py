@@ -111,7 +111,7 @@ class SimplifiedSmagorinsky(NavierStokes):
     def __init__(self, Cs=0.17, **kwargs):
         super().__init__(**kwargs)
         self.Cs = Cs
-        self.dx = (2*numpy.pi/self.uhat.x.shape[1])
+        self.dx = (2*numpy.pi/self.uhat.grid.x.shape[1])
         
     def rhs(self):
         u = self.uhat.to_physical()
@@ -174,19 +174,19 @@ class Smagorinsky(SimplifiedSmagorinsky):
     def rhs(self):
         u = self.uhat.to_physical()
         gradu = self.uhat.grad().to_physical()
-        Sij = ((gradu + gradu.transpose(1,0))/2)
+        Sij = ((gradu + gradu.transpose(1,0,2,3,4))/2)
         nu_t = (self.Cs*self.dx)**2*numpy.sqrt(numpy.sum(Sij*Sij, axis=(0,1)))
         nl1 = numpy.einsum("k...,jk...->j...", self.uhat.grid.k, (nu_t*gradu).to_spectral())
         nl2 = numpy.einsum("k...,jk...->j...", u, gradu)
         nl2 = PhysicalArray(nl2, self.uhat.grid).to_spectral()
         nl = 1j*nl1 - nl2
-        du = numpy.einsum("ij...,j...->i...", self.P, nl)        
+        du = numpy.einsum("ij...,j...->i...", self.P, nl)
         du -= self.nu*self.k2*self.uhat
         return du
 
 
 class TaylorGreenIC(object):
-    def __init__(self, N, padding, A=1, B=-1, C=0, a=1, b=1, c=1, **kwargs):
+    def __init__(self, sdims, pdims=None, A=1, B=-1, C=0, a=1, b=1, c=1, **kwargs):
         super().__init__(**kwargs)
 
         assert isinstance(a, int), "Wavenumbers must be integers."
@@ -194,7 +194,7 @@ class TaylorGreenIC(object):
         assert isinstance(c, int), "Wavenumbers must be integers."
         assert A*a+B*b+C*c == 0, "Initial condition does not satisfy continuity."
 
-        u = PhysicalArray([3,], SpectralGrid(N, padding))
+        u = PhysicalArray([3,], SpectralGrid(sdims, pdims))
         x = u.grid.x
         
         u[0] = A*numpy.cos(a*x[0])*numpy.sin(b*x[1])*numpy.sin(c*x[2])

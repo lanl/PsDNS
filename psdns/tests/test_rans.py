@@ -14,10 +14,8 @@ from psdns.solvers import KEpsilon
 
 
 class ShearLayer(KEpsilon):
-    def __init__(self, N, padding, tdump, t0=0, **kwargs):
-        grid = SpectralGrid(N, padding)
-        self.tdump = tdump
-        self.lastdump = -1e9
+    def __init__(self, sdims, pdims=None, **kwargs):
+        grid = SpectralGrid(sdims, pdims)
         self.uhat = SpectralArray([3,], grid)
 
         kwargs['Pr_k'] = 1.0
@@ -28,9 +26,8 @@ class ShearLayer(KEpsilon):
         self.dhdt = self.dU*(self.Ce2-self.Ce1)/2*numpy.sqrt(self.Cmu/(self.Ce1*self.Ce2))
         self.kstar = (self.Ce2-self.Ce1)/(8*self.Ce2)
         self.estar = (self.Ce2-self.Ce1)/(16*self.Ce2)*numpy.sqrt(self.Cmu*self.Ce1/self.Ce2)
-        self.t0 = t0
 
-        u, K, e = self.exact(0)
+        u, K, e = self.exact(20)
         U = PhysicalArray([5,], grid)
         U[0] = u
         U[1] = 0
@@ -40,7 +37,7 @@ class ShearLayer(KEpsilon):
         self.uhat = U.to_spectral()
 
     def exact(self, time):
-        h = self.dhdt*(time+self.t0)
+        h = self.dhdt*(time)
         eta = numpy.arcsin(numpy.sin(self.uhat.grid.x[1]))/h
         u = self.dU/2*eta.clip(min=-1, max=1)
         K = (self.kstar*self.dU**2*(1-eta**2)).clip(min=1e-12)
@@ -54,17 +51,15 @@ class TestRANS(unittest.TestCase):
         """
         solver = ImplicitEuler(
             dt=0.01,
-            tfinal=1.0,
+            tfinal=21.0,
+            t0=20.0,
             equations=ShearLayer(
                 Re=1e6,
-                N=[1, 2**6, 1],
-                padding=1,
-                tdump=0.1,
-                t0=20.0,
+                sdims=[1, 2**6, 1],
             ),
         )
         solver.run()
-        
+
         exact = solver.equations.exact(solver.time)
         u = solver.equations.uhat.to_physical()
         plt.subplot(311)
