@@ -3,12 +3,11 @@ import unittest
 import numpy
 from numpy import testing as nptest
 
-from psdns.bases import SpectralGrid, SpectralArray, PhysicalArray
 from mpi4py import MPI
 from mpi4py_fft import PFFT, newDistArray
 
+from psdns import *
 
-# With mpi4py, Symmetries passes, but norms fail.
 
 _domains = [
     #: A list of domains on which to run individual tests.  Each domain

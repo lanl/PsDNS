@@ -4,22 +4,18 @@ A simple psuedo-spectral LES for the TGV.
 """
 import numpy
 
-from psdns.diagnostics import StandardDiagnostics, Spectra
-from psdns.integrators import RungeKutta
-from psdns.solvers import Smagorinsky, TaylorGreenIC
+from psdns import *
+from psdns.equations.navier_stokes import Smagorinsky
 
 
-class Equations(Smagorinsky, TaylorGreenIC):
-    pass
-
+equations = Smagorinsky(Re=400)
 
 solver = RungeKutta(
     dt=0.01,
     tfinal=10.0,
-    equations=Equations(
-        Re=400,
-        sdims=2**5-1,
-        pdims=3*2**4,
+    equations=equations,
+    ic=equations.taylor_green_vortex(
+        SpectralGrid(sdims=2**5-1, pdims=3*2**4)
         ),
     diagnostics=[
         StandardDiagnostics(tdump=0.1, outfile="tgv.dat"),

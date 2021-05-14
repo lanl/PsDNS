@@ -17,13 +17,18 @@ class Integrator(object):
     shoud override the :meth:`step` method to implement the time
     advancement scheme.
     """
-    def __init__(self, equations, dt, tfinal, t0=0.0, diagnostics=[]):
+    def __init__(self, equations, ic, dt, tfinal, t0=0.0, diagnostics=[]):
         """Initialize an Integrator
 
+        :params equations: the equations
+        :params SpectralArray ic: the initial conditions
         :params real dt: The timestep
         :params real tfinal: The simulation stop time
+        :params real t0: The simulation start time
+        :params list(Diagnostics) diagnostics: diagnostics
         """
         self.equations = equations
+        self.uhat = ic
         #: Timestep
         self.dt = dt
         #: Simulation stop time
@@ -34,7 +39,7 @@ class Integrator(object):
 
     def diagnostics(self):
         for diagnostic in self.diagnostics_list:
-            diagnostic(self.time, self.equations, self.equations.uhat)
+            diagnostic(self.time, self.equations, self.uhat)
         
     def run(self):
         """Run a simulations to completion
@@ -63,7 +68,7 @@ class Euler(Integrator):
     """
     def step(self):
         self.time += self.dt
-        self.equations.uhat += self.dt*self.equations.rhs()
+        self.uhat += self.dt*self.equations.rhs(self.uhat)
 
 
 class ImplicitEuler(Integrator):
@@ -77,7 +82,7 @@ class ImplicitEuler(Integrator):
         self.alpha = alpha
         self.niter = niter
         self.tol = tol
-        self.uhat0 = self.equations.uhat.copy()
+        self.uhat0 = self.uhat.copy()
         self.resfile = open("residual.dat", 'w')
 
     def __del__(self):
@@ -85,11 +90,11 @@ class ImplicitEuler(Integrator):
 
     def step(self):
         self.resfile.write("# Time = {}\n".format(self.time))
-        self.uhat0[...] = self.equations.uhat
+        self.uhat0[...] = self.uhat
         self.time += self.dt
         for i in range(self.niter):
-            dU = self.uhat0 - self.equations.uhat + self.dt*self.equations.rhs()
-            self.equations.uhat += self.alpha*dU
+            dU = self.uhat0 - self.uhat + self.dt*self.equations.rhs(self.uhat)
+            self.uhat += self.alpha*dU
             res = numpy.linalg.norm(dU)
             self.resfile.write("{} {}\n".format(i, res))
             self.resfile.flush()
@@ -136,16 +141,16 @@ class RungeKutta(Integrator):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         #: First intermediate storage array
-        self.uhat0 = self.equations.uhat.copy()
+        self.uhat0 = self.uhat.copy()
         #: Second intermediate storage array
-        self.uhat1 = self.equations.uhat.copy()
+        self.uhat1 = self.uhat.copy()
     
     def step(self):
-        self.uhat1[...] = self.uhat0[...] = self.equations.uhat
+        self.uhat1[...] = self.uhat0[...] = self.uhat
         self.time += self.dt            
         for a, b in zip(self.a, self.b):
-            self.dU = self.equations.rhs()
+            self.dU = self.equations.rhs(self.uhat)
             if b:
-                self.equations.uhat[...] = self.uhat0 + b*self.dt*self.dU
+                self.uhat[...] = self.uhat0 + b*self.dt*self.dU
             self.uhat1 += a*self.dt*self.dU
-        self.equations.uhat[...] = self.uhat1
+        self.uhat[...] = self.uhat1

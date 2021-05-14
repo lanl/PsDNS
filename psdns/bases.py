@@ -56,8 +56,13 @@ class SpectralGrid(object):
         self.sdims = numpy.broadcast_to(numpy.atleast_1d(sdims), (3,))
         self.pdims = numpy.broadcast_to(numpy.atleast_1d(pdims), (3,)) \
           if pdims else self.sdims
+        if self.sdims[0] > self.pdims[0] and self.sdims[0] % 2 == 0:
+            warnings.warn("Using even number of modes in x: see the manual for why you don't want to do this")
+        if self.sdims[1] > self.pdims[1] and self.sdims[1] % 2 == 0:
+            warnings.warn("Using even number of modes in x: see the manual for why you don't want to do this")
         self.x = (2*numpy.pi/self.pdims[:,numpy.newaxis,numpy.newaxis,numpy.newaxis,]) \
           *numpy.mgrid[:self.pdims[0],:self.pdims[1],:self.pdims[2]]
+        self.dx = (2*numpy.pi/self.x.shape[1])
         k = numpy.mgrid[:self.sdims[0],:self.sdims[1],:self.sdims[2]//2+1]
         # Note, use sample spacing/2pi to get radial frequencies, rather than circular frequencies.
         fftfreq0 = numpy.fft.fftfreq(self.pdims[0], 1/self.pdims[0])[[*range(0, (self.sdims[0]+1)//2), *range(-(self.sdims[0]//2), 0)]]
@@ -68,10 +73,7 @@ class SpectralGrid(object):
             fftfreq1[k[1]],
             rfftfreq[k[2]]
             ] )
-        if self.k.shape[1] > self.x.shape[1] and self.k.shape[1] % 2 == 0:
-            warnings.warn("Using even number of modes in x: see the manual for why you don't want to do this")
-        if self.k.shape[2] > self.x.shape[2] and self.k.shape[2] % 2 == 0:
-            warnings.warn("Using even number of modes in y: see the manual for why you don't want to do this")
+        self.k2 =  numpy.sum(self.k*self.k, axis=0)
         
 
 class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):

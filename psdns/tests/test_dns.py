@@ -1,16 +1,13 @@
 import unittest
 
-
 import matplotlib
 matplotlib.use('PDF')
 import matplotlib.pylab as plt
 import numpy
 from numpy import testing as nptest
 
-
-from psdns.diagnostics import Diagnostics
-from psdns.integrators import RungeKutta
-from psdns.solvers import NavierStokes, TaylorGreenIC
+from psdns import *
+from psdns.equations.navier_stokes import NavierStokes
 
 
 brachet_data = numpy.array([
@@ -89,10 +86,6 @@ brachet_data = numpy.array([
     [ 9.902109479306144, 0.005371948156156867 ], ] ).T
 
 
-class Equations(NavierStokes, TaylorGreenIC):
-    pass
-
-
 class TestDiagnostics(Diagnostics):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -119,14 +112,14 @@ class TestDNS(unittest.TestCase):
         tests fail.  If they are uncommented, the latter tests pass,
         but this test requires N=2**5 to pass.
         """
+        equations=NavierStokes(Re=100)
         solver = RungeKutta(
             dt=0.01,
             tfinal=10.0,
-            equations=Equations(
-                Re=100,
-                sdims=2**4-1,
-                pdims=3*2**3,
-            ),
+            equations=equations,
+            ic=equations.taylor_green_vortex(
+                SpectralGrid(sdims=2**4-1, pdims=3*2**3)
+                ),
             diagnostics=[
                 TestDiagnostics(tdump=0.1)
                 ]

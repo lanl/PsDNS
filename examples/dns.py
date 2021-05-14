@@ -3,24 +3,18 @@
 A simple psuedo-spectral DNS for the TGV, corresponding to the results
 of Brachet, et al. (1983). 
 """
-import pickle
-
-from psdns.diagnostics import StandardDiagnostics, Spectra, FieldDump
-from psdns.integrators import RungeKutta
-from psdns.solvers import NavierStokes, TaylorGreenIC
+from psdns import *
+from psdns.equations.navier_stokes import NavierStokes
 
 
-class Equations(NavierStokes, TaylorGreenIC):
-    pass
-
+equations = NavierStokes(Re=400)
 
 solver = RungeKutta(
     dt=0.01,
     tfinal=10.0,
-    equations=Equations(
-        Re=400,
-        sdims=2**6-1,
-        pdims=3*2**5,
+    equations=equations,
+    ic=equations.taylor_green_vortex(
+        SpectralGrid(sdims=2**6-1, pdims=3*2**5)
         ),
     diagnostics=[
         StandardDiagnostics(tdump=0.1, outfile="tgv.dat"),
