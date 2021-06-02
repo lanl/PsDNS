@@ -94,7 +94,8 @@ class TestDiagnostics(Diagnostics):
     def diagnostic(self, time, equations, uhat):
         eps = [ (1j*uhat.grid.k[i]*uhat[j]).to_physical().norm()
                 for i in range(3) for j in range(3) ]
-        self.dumps.append( [ time, equations.nu*sum(eps) ] )
+        if uhat.grid.comm.rank == 0:
+            self.dumps.append( [ time, equations.nu*sum(eps) ] )
 
 
 class TestDNS(unittest.TestCase):
@@ -118,23 +119,25 @@ class TestDNS(unittest.TestCase):
             tfinal=10.0,
             equations=equations,
             ic=equations.taylor_green_vortex(
-                SpectralGrid(sdims=2**4-1, pdims=3*2**3)
+                #SpectralGrid(sdims=2**4-1, pdims=3*2**3)
+                SpectralGrid(sdims=2**5)
                 ),
             diagnostics=[
                 TestDiagnostics(tdump=0.1)
                 ]
         )
         solver.run()
-        output = numpy.array(solver.diagnostics_list[0].dumps).T
-        plt.plot(brachet_data[0], brachet_data[1], label="Brachet (1993)")
-        plt.plot(output[0], output[1], label="This code")
-        plt.title("Comparision to published data")
-        plt.xlabel("Time")
-        plt.ylabel("Dissiapation Rate")
-        plt.legend()
-        plt.savefig("Brachet_Re100.pdf")
-        nptest.assert_allclose(
-            output[1],
-            numpy.interp(output[0], brachet_data[0], brachet_data[1]),
-            rtol=0.06, atol=0
-            )
+        if solver.uhat.grid.comm.rank == 0:
+            output = numpy.array(solver.diagnostics_list[0].dumps).T
+            plt.plot(brachet_data[0], brachet_data[1], label="Brachet (1993)")
+            plt.plot(output[0], output[1], label="This code")
+            plt.title("Comparision to published data")
+            plt.xlabel("Time")
+            plt.ylabel("Dissiapation Rate")
+            plt.legend()
+            plt.savefig("Brachet_Re100.pdf")
+            nptest.assert_allclose(
+                output[1],
+                numpy.interp(output[0], brachet_data[0], brachet_data[1]),
+                rtol=0.06, atol=0
+                )
