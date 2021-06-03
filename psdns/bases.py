@@ -249,7 +249,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             numpy.fft.rfft2(
                 self._data,
                 #s=self.x.shape[2:],
-                )[...,i1,:N[2]]
+                )[...,i1,:N[2]//2+1]
             )
         t2 = numpy.zeros(
             t1.shape[:-3]
@@ -413,9 +413,17 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                 [ t1b, 1, self.grid.slice2 ],
                 [ t2b, 1, self.grid.slice1 ],
                 )
+        t25 = numpy.zeros(
+            self.shape[:-3]
+            + ( self.grid.pdims[0]//self.grid.comm.size,
+                self.grid.pdims[1],
+                self.grid.pdims[2]//2+1 ),
+            dtype=complex
+            )
+        t25[...,i1,:self.grid.sdims[2]//2+1] = t2
         t3 = numpy.fft.irfft2(
-            t2,
-            #s=self.grid.x.shape[2:],
+            t25,
+            s=self.grid.x.shape[2:],
             axes=(-2, -1)
             )*numpy.prod(self.grid.pdims)
         return PhysicalArray(t3, self.grid)
