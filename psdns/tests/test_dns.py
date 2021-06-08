@@ -119,8 +119,7 @@ class TestDNS(unittest.TestCase):
             tfinal=10.0,
             equations=equations,
             ic=equations.taylor_green_vortex(
-                #SpectralGrid(sdims=2**4-1, pdims=3*2**3)
-                SpectralGrid(sdims=2**5)
+                SpectralGrid(sdims=2**4-1, pdims=3*2**3)
                 ),
             diagnostics=[
                 TestDiagnostics(tdump=0.1)

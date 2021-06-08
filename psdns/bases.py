@@ -46,14 +46,7 @@ class SpectralGrid(object):
           that this method has some inconsistencies.  See :ref:`mpi4py-fft
           Compatability`.
         :type aliasing_strategy: '' (default) or 'mpi4py'
-
-        Post text.
-
-
         """
-        # To do:
-        #   1. Arguments for domain size
-        #   3. Support for 1, 2, or 3-d.
         self._aliasing_strategy = aliasing_strategy
         self.comm = comm
         self.sdims = numpy.broadcast_to(numpy.atleast_1d(sdims), (3,))
@@ -63,82 +56,60 @@ class SpectralGrid(object):
             warnings.warn("Using even number of modes in x: see the manual for why you don't want to do this")
         if self.sdims[1] > self.pdims[1] and self.sdims[1] % 2 == 0:
             warnings.warn("Using even number of modes in x: see the manual for why you don't want to do this")
-        # The decomposition algorithm is currently only supported when
-        # the decomposition dimensions are evenly divisible by the
-        # number of processeors.
-        assert self.pdims[0] % self.comm.size == 0
-        assert self.sdims[1] % self.comm.size == 0
         #: The slice of the physical space global array stored by this
         #: process
-        self.local_physical_slice = (
-            slice(self.comm.rank*self.pdims[0]//self.comm.size, (self.comm.rank+1)*self.pdims[0]//self.comm.size),
-            slice(0, self.pdims[1]),
-            slice(0, self.pdims[2])
-            )
+        self.physical_slices = [
+            ( slice(i*self.pdims[0]//self.comm.size,
+                    (i+1)*self.pdims[0]//self.comm.size),
+              slice(0, self.pdims[1]),
+              slice(0, self.pdims[2]) )
+            for i in range(self.comm.size)
+            ]
+        self.local_physical_slice = self.physical_slices[self.comm.rank]
         #: The slice of the spectral space global array stored by this
         #: process
-        self.local_spectral_slice = (
-            slice(0, self.sdims[0]),
-            slice(self.comm.rank*self.sdims[1]//self.comm.size,
-                  (self.comm.rank+1)*self.sdims[1]//self.comm.size),
-            slice(0, self.sdims[2]//2+1)
+        self.spectral_slices = [
+            ( slice(0, self.sdims[0]),
+              slice(i*self.sdims[1]//self.comm.size,
+                    (i+1)*self.sdims[1]//self.comm.size),
+              slice(0, self.sdims[2]//2+1)
             )
+            for i in range(self.comm.size)
+            ]
+        self.local_spectral_slice = self.spectral_slices[self.comm.rank]
         self.x = self.xgrid()[(slice(None),)+self.local_physical_slice]
         self.dx = (2*numpy.pi/self.x.shape[1])
         self.k = self.kgrid()[(slice(None),)+self.local_spectral_slice]
         self.k2 =  numpy.sum(self.k*self.k, axis=0)
-        #: Apply to data which is decomposed in the first index, to
-        #: prepare for re-distribution in the second index.
-        self.slice1 = MPI.DOUBLE_COMPLEX.Create_subarray(
-            [ self.pdims[0]//self.comm.size,
-              self.sdims[1],
-              self.sdims[2]//2+1
-            ],
-            [ self.pdims[0]//self.comm.size,
-              self.sdims[1]//self.comm.size,
-              self.sdims[2]//2+1
-            ],
-            [0, 0, 0],
-            ).Create_resized(
-                0,
-                # We want chunks that are sdims[1]//size elements
-                # apart in the second index.
-                (self.sdims[2]//2+1)
-                *self.sdims[1]//self.comm.size
-                *MPI.DOUBLE_COMPLEX.size
+        self.slice1 = [
+            MPI.DOUBLE_COMPLEX.Create_subarray(
+                [ self.local_physical_slice[0].stop - self.local_physical_slice[0].start,
+                  self.sdims[1],
+                  self.sdims[2]//2+1
+                ],
+                [ self.local_physical_slice[0].stop - self.local_physical_slice[0].start,
+                  s[1].stop - s[1].start,
+                  self.sdims[2]//2+1
+                ],
+                [ 0, s[1].start, 0],
                 ).Commit()
-        #: Apply to data which is decomposed in the second index, to
-        #: prepare for re-distribution in the first index.
-        self.slice2 = MPI.DOUBLE_COMPLEX.Create_subarray(
-            [ self.pdims[0],
-              self.sdims[1]//self.comm.size,
-              self.sdims[2]//2+1
-            ],
-            [ self.pdims[0]//self.comm.size,
-              self.sdims[1]//self.comm.size,
-              self.sdims[2]//2+1
-            ],
-            [0, 0, 0],
-            ).Create_resized(
-                0,
-                # We want chunks that are pdims[0]//size elements
-                # apart in the first index.
-                (self.sdims[2]//2+1)
-                *self.sdims[1]//self.comm.size
-                *self.pdims[0]//self.comm.size
-                *MPI.DOUBLE_COMPLEX.size
+            for s in self.spectral_slices
+            ]
+        self.slice2 = [
+            MPI.DOUBLE_COMPLEX.Create_subarray(
+                [ self.pdims[0],
+                  self.local_spectral_slice[1].stop - self.local_spectral_slice[1].start,
+                  self.sdims[2]//2+1
+                ],
+                [ p[0].stop - p[0].start,
+                  self.local_spectral_slice[1].stop - self.local_spectral_slice[1].start,
+                  self.sdims[2]//2+1
+                ],
+                [ p[0].start, 0, 0 ],
                 ).Commit()
-    #     self.slice1 = MPI.DOUBLE_COMPLEX.Create_subarray(
-    # [2, 8, 5],
-    # [2, 2, 5],
-    # [0, 0, 0],
-    # ).Create_resized(0, 2*5*MPI.DOUBLE_COMPLEX.size).Commit()
-    #     self.slice2 = MPI.DOUBLE_COMPLEX.Create_subarray(
-    # [8, 2, 5],
-    # [2, 2, 5],
-    # [0, 0, 0],
-    # ).Create_resized(0, 2*2*5*MPI.DOUBLE_COMPLEX.size).Commit()
-
+            for p in self.physical_slices
+            ]
+           
     def xgrid(self):
         return (2*numpy.pi/self.pdims[:,numpy.newaxis,numpy.newaxis,numpy.newaxis,]) \
           *numpy.mgrid[:self.pdims[0],:self.pdims[1],:self.pdims[2]]
@@ -155,11 +126,9 @@ class SpectralGrid(object):
             rfftfreq[k[2]]
             ] )
         
-        
 
 class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     def __init__(self, shape_or_data, grid, dtype=float):
-        #print(f"PhysicalArray.__init__{shape_or_data.shape}")
         try:
             if shape_or_data.shape[-3:] != grid.x.shape[1:]:
                 raise ValueError(
@@ -225,52 +194,42 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     def to_spectral(self):
         # Index array which picks out retained modes in a complex transform
         N = self.grid.sdims
-        #N = self.grid.k.shape[1:]
-        #M = self.grid.x.shape[1:]
         i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
         i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
-        # s = numpy.fft.rfftn(
-        #     self._data,
-        #     axes = (-3,-2,-1),
-        #     )
-        # if self.grid._aliasing_strategy == 'mpi4py':
-        #     if M[0] > N[0] and N[0] % 2 == 0:
-        #         s[...,-(N[0]//2),:,:] = s[...,N[0]//2,:,:]+s[...,-(N[0]//2),:,:]
-        #     if M[1] > N[1] and N[1] % 2 == 0:
-        #         s[...,:,-(N[1]//2),:] = s[...,:,N[1]//2,:]+s[...,:,-(N[1]//2),:]
-        # return SpectralArray(
-        #     s[...,i0[:,numpy.newaxis],i1,:N[2]]/self.grid.x[0].size,
-        #     self.grid,
-        #     )
-
         # It would be more efficient to design MPI slices that fit
         # the non-contiguous array returned by the slicing here.
         t1 = numpy.ascontiguousarray(
             numpy.fft.rfft2(
                 self._data,
-                #s=self.x.shape[2:],
                 )[...,i1,:N[2]//2+1]
             )
         t2 = numpy.zeros(
             t1.shape[:-3]
             + ( self.grid.pdims[0],
-                self.grid.sdims[1]//self.grid.comm.size,
+                self.grid.local_spectral_slice[1].stop - self.grid.local_spectral_slice[1].start,
                 self.grid.sdims[2]//2+1 ),
             dtype=complex
             )
         count = numpy.prod(self.shape[:-3], dtype=int)
         t1a = t1.reshape(count, *t1.shape[-3:])
         t2a = t2.reshape(count, *t2.shape[-3:])
+        counts = [1] * self.grid.comm.size
+        displs = [0] * self.grid.comm.size
         for t1b, t2b in zip(t1a, t2a):
-            self.grid.comm.Alltoall(
-                [ t1b, 1, self.grid.slice1 ],
-                [ t2b, 1, self.grid.slice2 ],
+            self.grid.comm.Alltoallw(
+                [ t1b, counts, displs, self.grid.slice1 ],
+                [ t2b, counts, displs, self.grid.slice2 ],
                 )
         t3 = numpy.fft.fft(
             t2,
             axis=-3,
             )
         t3 = t3[...,i0,:,:]/numpy.prod(self.grid.pdims)
+        # if self.grid._aliasing_strategy == 'mpi4py':
+        #     if M[0] > N[0] and N[0] % 2 == 0:
+        #         s[...,-(N[0]//2),:,:] = s[...,N[0]//2,:,:]+s[...,-(N[0]//2),:,:]
+        #     if M[1] > N[1] and N[1] % 2 == 0:
+        #         s[...,:,-(N[1]//2),:] = s[...,:,N[1]//2,:]+s[...,:,-(N[1]//2),:]
         return SpectralArray(t3, self.grid)
 
     def norm(self):
@@ -349,16 +308,48 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         return SpectralArray(self._data.real, self.grid)
 
     def to_physical(self):
-        # N = self.grid.k.shape[1:]
-        # M = self.grid.x.shape[1:]
-        # i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
-        # i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
-        # s = numpy.zeros(
-        #     shape = list(self.shape[:-3])
-        #     + [ M[0], M[1], M[2]//2+1 ],
-        #     dtype = complex
-        #     )
-        # s[...,i0[:,numpy.newaxis],i1,:N[2]] = self
+        N = self.grid.sdims
+        i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
+        i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
+        s = numpy.zeros(
+            self.shape[:-3]
+            + ( self.grid.pdims[0],
+                self.grid.local_spectral_slice[1].stop - self.grid.local_spectral_slice[1].start,
+                self.grid.sdims[2]//2+1 ),
+            dtype = complex
+            )
+        s[...,i0,:,:] = self
+        t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
+        t2 = numpy.zeros(
+            self.shape[:-3]
+            + ( self.grid.local_physical_slice[0].stop - self.grid.local_physical_slice[0].start,
+                self.grid.sdims[1],
+                self.grid.sdims[2]//2+1 ),
+            dtype=complex
+            )
+        count = numpy.prod(self.shape[:-3], dtype=int)
+        t1a = t1.reshape(count, *t1.shape[-3:])
+        t2a = t2.reshape(count, *t2.shape[-3:])
+        counts = [1] * self.grid.comm.size
+        displs = [0] * self.grid.comm.size
+        for t1b, t2b in zip(t1a, t2a):
+            self.grid.comm.Alltoallw(
+                [ t1b, counts, displs, self.grid.slice2 ],
+                [ t2b, counts, displs, self.grid.slice1 ],
+                )
+        t25 = numpy.zeros(
+            self.shape[:-3]
+            + ( self.grid.local_physical_slice[0].stop - self.grid.local_physical_slice[0].start,
+                self.grid.pdims[1],
+                self.grid.pdims[2]//2+1 ),
+            dtype=complex
+            )
+        t25[...,i1,:self.grid.sdims[2]//2+1] = t2
+        t3 = numpy.fft.irfft2(
+            t25,
+            s=self.grid.x.shape[2:],
+            axes=(-2, -1)
+            )*numpy.prod(self.grid.pdims)
         # if self.grid._aliasing_strategy == 'mpi4py':
         #     if M[0] > N[0] and N[0] % 2 == 0:
         #         s[...,-(N[0]//2),:,:] *= 0.5
@@ -379,53 +370,6 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         #         if M[2] == 2*(N[2]-1):
         #             s[...,1:,N[1]//2,-1] = numpy.conjugate(s[...,-1:0:-1,-(N[0]//2),-1])
         #             s[...,0,N[1]//2,-1] = numpy.conjugate(s[...,0,-(N[0]//2),-1])
-        # return PhysicalArray(
-        #     numpy.fft.irfftn(
-        #         s,
-        #         s=self.grid.x.shape[1:],
-        #         ),
-        #     self.grid
-        #     )*self.grid.x[0].size
-        N = self.grid.sdims
-        i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
-        i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
-        s = numpy.zeros(
-            self.shape[:-3]
-            + ( self.grid.pdims[0],
-                self.grid.sdims[1]//self.grid.comm.size,
-                self.grid.sdims[2]//2+1 ),
-            dtype = complex
-            )
-        s[...,i0,:,:] = self
-        t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
-        t2 = numpy.zeros(
-            self.shape[:-3]
-            + ( self.grid.pdims[0]//self.grid.comm.size,
-                self.grid.sdims[1],
-                self.grid.sdims[2]//2+1 ),
-            dtype=complex
-            )
-        count = numpy.prod(self.shape[:-3], dtype=int)
-        t1a = t1.reshape(count, *t1.shape[-3:])
-        t2a = t2.reshape(count, *t2.shape[-3:])
-        for t1b, t2b in zip(t1a, t2a):
-            self.grid.comm.Alltoall(
-                [ t1b, 1, self.grid.slice2 ],
-                [ t2b, 1, self.grid.slice1 ],
-                )
-        t25 = numpy.zeros(
-            self.shape[:-3]
-            + ( self.grid.pdims[0]//self.grid.comm.size,
-                self.grid.pdims[1],
-                self.grid.pdims[2]//2+1 ),
-            dtype=complex
-            )
-        t25[...,i1,:self.grid.sdims[2]//2+1] = t2
-        t3 = numpy.fft.irfft2(
-            t25,
-            s=self.grid.x.shape[2:],
-            axes=(-2, -1)
-            )*numpy.prod(self.grid.pdims)
         return PhysicalArray(t3, self.grid)
 
     def grad(self):
@@ -464,8 +408,6 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                         )
                     )
                 )
-        #if self.grid.comm.rank == 0:
-        #    n /= self.grid.comm.size
         return n
 
     def set_mode(self, mode, val):
@@ -476,29 +418,10 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             self._data[mode[0], mode[1]-self.grid.local_spectral_slice[1].start, mode[2]] = val
 
     def get_mode(self, mode):
-        # print(f"{self.grid.comm.rank}: get_mode({mode})")
-        # mode[1] %= self.grid.sdims[1]
-        # tag = 10000*mode[0]+100*mode[1]+mode[2]
-        # if (mode[1]>=self.grid.local_spectral_slice[1].start and
-        #     mode[1]<self.grid.local_spectral_slice[1].stop):
-        #     val = self._data[mode[0], mode[1]-self.grid.local_spectral_slice[1].start, mode[2]]
-        #     if self.grid.comm.rank == 0:
-        #         print(f"{self.grid.comm.rank}: get_mode({mode}) = {val}")
-        #         return val
-        #     else:
-        #         print(f"{self.grid.comm.rank}: send({val}, dest=0, tag={tag})")
-        #         self.grid.comm.send(val, dest=0, tag=tag)
-        #         return None
-        # else:
-        #     if self.grid.comm.rank == 0:
-        #         print(f"0: recv(source=MPI.ANY_SOURCE, tag={tag}) = ...", end="", flush=True)
-        #         val = self.grid.comm.recv(source=MPI.ANY_SOURCE, tag=tag)
-        #         print(f"{val}")
-        #         return val
-        #     else:
-        #         return None
-        #
-        # The following is a hack, but it makes communication simpler:
+        # The following is a hack, but it makes communication
+        # simpler.  A cleaner approach would to be to have the
+        # processor that finds the mode send the data to the root,
+        # instead of a global reduce.
         mode[1] %= self.grid.sdims[1]
         if (mode[1]>=self.grid.local_spectral_slice[1].start and
              mode[1]<self.grid.local_spectral_slice[1].stop):
