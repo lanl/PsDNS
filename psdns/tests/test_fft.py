@@ -13,23 +13,23 @@ _domains = [
     #: A list of domains on which to run individual tests.  Each domain
     #: is a 2-tuple which is passed as the arguments to the
     #: :class:`~psdns.bases.SpectralGrid` constructor.
-    # ( (9, 9, 9), (9, 9, 9) ),
-    # ( (8, 9, 9), (8, 9, 9) ),
-    # ( (9, 8, 9), (9, 8, 9) ),
-    # ( (8, 8, 9), (8, 8, 9) ),
-    # ( (9, 9, 8), (9, 9, 8) ),
-    # ( (8, 9, 8), (8, 9, 8) ),
-    # ( (9, 8, 8), (9, 8, 8) ),
+    ( (9, 9, 9), (9, 9, 9) ),
+    ( (8, 9, 9), (8, 9, 9) ),
+    ( (9, 8, 9), (9, 8, 9) ),
+    ( (8, 8, 9), (8, 8, 9) ),
+    ( (9, 9, 8), (9, 9, 8) ),
+    ( (8, 9, 8), (8, 9, 8) ),
+    ( (9, 8, 8), (9, 8, 8) ),
     ( (8, 8, 8), (8, 8, 8) ),
-    # ( (9, 9, 9), (12, 12, 12) ),
-    # ( (8, 9, 9), (12, 12, 12) ),
-    # ( (9, 8, 9), (12, 12, 12) ),
-    # ( (8, 8, 9), (12, 12, 12) ),
-    # ( (9, 9, 8), (12, 12, 12) ),
-    # ( (8, 9, 8), (12, 12, 12) ),
-    # ( (9, 8, 8), (12, 12, 12) ),
-    # ( (8, 8, 8), (12, 12, 12) ),
-    # ( (8, 8, 8), (12, 12, 8) ),
+    ( (9, 9, 9), (12, 12, 12) ),
+    ( (8, 9, 9), (12, 12, 12) ),
+    ( (9, 8, 9), (12, 12, 12) ),
+    ( (8, 8, 9), (12, 12, 12) ),
+    ( (9, 9, 8), (12, 12, 12) ),
+    ( (8, 9, 8), (12, 12, 12) ),
+    ( (9, 8, 8), (12, 12, 12) ),
+    ( (8, 8, 8), (12, 12, 12) ),
+    ( (8, 8, 8), (12, 12, 8) ),
     ]
 
 
@@ -231,34 +231,38 @@ class TestProperties(unittest.TestCase):
                     self.assertAlmostEqual(p.norm(), 0.5)
                 
     def test_vector_to_spectral(self):
-        p = random_physical_array(SpectralGrid((8,8,8)), shape=(3,))
-        s = p.to_spectral()
-        with self.subTest("check shape"):
-            self.assertEqual(
-                p.shape[:-3],
-                s.shape[:-3]
-                )
-        for i in range(3):
-            with self.subTest(vector_element=i):
-                nptest.assert_almost_equal(
-                    numpy.asarray(p[i].to_spectral()),
-                    numpy.asarray(s[i])
-                    )
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
+                p = random_physical_array(SpectralGrid(sdims, pdims), shape=(3,))
+                s = p.to_spectral()
+                with self.subTest("check shape"):
+                    self.assertEqual(
+                        p.shape[:-3],
+                        s.shape[:-3]
+                        )
+                for i in range(3):
+                    with self.subTest(vector_element=i):
+                        nptest.assert_almost_equal(
+                            numpy.asarray(p[i].to_spectral()),
+                            numpy.asarray(s[i])
+                            )
 
     def test_vector_to_physical(self):
-        s = random_spectral_array(SpectralGrid((8,8,8)), shape=(3,))
-        p = s.to_physical()
-        with self.subTest("check shape"):
-            self.assertEqual(
-                s.shape[:-3],
-                p.shape[:-3]
-                )
-        for i in range(3):
-            with self.subTest(vector_element=i):
-                nptest.assert_almost_equal(
-                    numpy.asarray(s[i].to_physical()),
-                    numpy.asarray(p[i])
-                    )
+        for sdims, pdims in _domains:
+            with self.subTest(sdims=sdims, pdims=pdims):
+                s = random_spectral_array(SpectralGrid(sdims, pdims), shape=(3,))
+                p = s.to_physical()
+                with self.subTest("check shape"):
+                    self.assertEqual(
+                        s.shape[:-3],
+                        p.shape[:-3]
+                        )
+                for i in range(3):
+                    with self.subTest(vector_element=i):
+                        nptest.assert_almost_equal(
+                            numpy.asarray(s[i].to_physical()),
+                            numpy.asarray(p[i])
+                            )
 
     # def test_norm_pointwise(self):
     #     """Spectral norm should match physical space norm for a single mode.

@@ -63,82 +63,108 @@ class SpectralGrid(object):
             warnings.warn("Using even number of modes in x: see the manual for why you don't want to do this")
         if self.sdims[1] > self.pdims[1] and self.sdims[1] % 2 == 0:
             warnings.warn("Using even number of modes in x: see the manual for why you don't want to do this")
-        # The decomposition algorithm is currently only supported when
-        # the decomposition dimensions are evenly divisible by the
-        # number of processeors.
-        assert self.pdims[0] % self.comm.size == 0
-        assert self.sdims[1] % self.comm.size == 0
         #: The slice of the physical space global array stored by this
         #: process
-        self.local_physical_slice = (
-            slice(self.comm.rank*self.pdims[0]//self.comm.size, (self.comm.rank+1)*self.pdims[0]//self.comm.size),
-            slice(0, self.pdims[1]),
-            slice(0, self.pdims[2])
-            )
+        self.physical_slices = [
+            ( slice(i*self.pdims[0]//self.comm.size,
+                    (i+1)*self.pdims[0]//self.comm.size),
+              slice(0, self.pdims[1]),
+              slice(0, self.pdims[2]) )
+            for i in range(self.comm.size)
+            ]
+        self.local_physical_slice = self.physical_slices[self.comm.rank]
         #: The slice of the spectral space global array stored by this
         #: process
-        self.local_spectral_slice = (
-            slice(0, self.sdims[0]),
-            slice(self.comm.rank*self.sdims[1]//self.comm.size,
-                  (self.comm.rank+1)*self.sdims[1]//self.comm.size),
-            slice(0, self.sdims[2]//2+1)
+        self.spectral_slices = [
+            ( slice(0, self.sdims[0]),
+              slice(i*self.sdims[1]//self.comm.size,
+                    (i+1)*self.sdims[1]//self.comm.size),
+              slice(0, self.sdims[2]//2+1)
             )
+            for i in range(self.comm.size)
+            ]
+        self.local_spectral_slice = self.spectral_slices[self.comm.rank]
         self.x = self.xgrid()[(slice(None),)+self.local_physical_slice]
         self.dx = (2*numpy.pi/self.x.shape[1])
         self.k = self.kgrid()[(slice(None),)+self.local_spectral_slice]
         self.k2 =  numpy.sum(self.k*self.k, axis=0)
         #: Apply to data which is decomposed in the first index, to
         #: prepare for re-distribution in the second index.
-        self.slice1 = MPI.DOUBLE_COMPLEX.Create_subarray(
-            [ self.pdims[0]//self.comm.size,
-              self.sdims[1],
-              self.sdims[2]//2+1
-            ],
-            [ self.pdims[0]//self.comm.size,
-              self.sdims[1]//self.comm.size,
-              self.sdims[2]//2+1
-            ],
-            [0, 0, 0],
-            ).Create_resized(
-                0,
-                # We want chunks that are sdims[1]//size elements
-                # apart in the second index.
-                (self.sdims[2]//2+1)
-                *self.sdims[1]//self.comm.size
-                *MPI.DOUBLE_COMPLEX.size
-                ).Commit()
+        #:
+        # self.slice1 = MPI.DOUBLE_COMPLEX.Create_subarray(
+        #     [ self.pdims[0]//self.comm.size,
+        #       self.sdims[1],
+        #       self.sdims[2]//2+1
+        #     ],
+        #     [ self.pdims[0]//self.comm.size,
+        #       self.sdims[1]//self.comm.size,
+        #       self.sdims[2]//2+1
+        #     ],
+        #     [0, 0, 0],
+        #     ).Create_resized(
+        #         0,
+        #         # We want chunks that are sdims[1]//size elements
+        #         # apart in the second index.
+        #         (self.sdims[2]//2+1)
+        #         *self.sdims[1]//self.comm.size
+        #         *MPI.DOUBLE_COMPLEX.size
+        #         ).Commit()
         #: Apply to data which is decomposed in the second index, to
         #: prepare for re-distribution in the first index.
-        self.slice2 = MPI.DOUBLE_COMPLEX.Create_subarray(
-            [ self.pdims[0],
-              self.sdims[1]//self.comm.size,
-              self.sdims[2]//2+1
-            ],
-            [ self.pdims[0]//self.comm.size,
-              self.sdims[1]//self.comm.size,
-              self.sdims[2]//2+1
-            ],
-            [0, 0, 0],
-            ).Create_resized(
-                0,
-                # We want chunks that are pdims[0]//size elements
-                # apart in the first index.
-                (self.sdims[2]//2+1)
-                *self.sdims[1]//self.comm.size
-                *self.pdims[0]//self.comm.size
-                *MPI.DOUBLE_COMPLEX.size
-                ).Commit()
-    #     self.slice1 = MPI.DOUBLE_COMPLEX.Create_subarray(
-    # [2, 8, 5],
-    # [2, 2, 5],
-    # [0, 0, 0],
-    # ).Create_resized(0, 2*5*MPI.DOUBLE_COMPLEX.size).Commit()
-    #     self.slice2 = MPI.DOUBLE_COMPLEX.Create_subarray(
-    # [8, 2, 5],
-    # [2, 2, 5],
-    # [0, 0, 0],
-    # ).Create_resized(0, 2*2*5*MPI.DOUBLE_COMPLEX.size).Commit()
+        # self.slice2 = MPI.DOUBLE_COMPLEX.Create_subarray(
+        #     [ self.pdims[0],
+        #       self.sdims[1]//self.comm.size,
+        #       self.sdims[2]//2+1
+        #     ],
+        #     [ self.pdims[0]//self.comm.size,
+        #       self.sdims[1]//self.comm.size,
+        #       self.sdims[2]//2+1
+        #     ],
+        #     [0, 0, 0],
+        #     ).Create_resized(
+        #         0,
+        #         # We want chunks that are pdims[0]//size elements
+        #         # apart in the first index.
+        #         (self.sdims[2]//2+1)
+        #         *self.sdims[1]//self.comm.size
+        #         *self.pdims[0]//self.comm.size
+        #         *MPI.DOUBLE_COMPLEX.size
+        #         ).Commit()
+        #: At the time of the re-distribution, the data is in physical
+        #: space in the first index, and spectral in the second and
+        #: third.
 
+        # Going from slice1 to slice2 we are redistributing from the
+        # first index, to the second index.
+        self.slice1 = [
+            MPI.DOUBLE_COMPLEX.Create_subarray(
+                [ self.local_physical_slice[0].stop - self.local_physical_slice[0].start,
+                  self.sdims[1],
+                  self.sdims[2]//2+1
+                ],
+                [ self.local_physical_slice[0].stop - self.local_physical_slice[0].start,
+                  s[1].stop - s[1].start,
+                  self.sdims[2]//2+1
+                ],
+                [ 0, s[1].start, 0],
+                ).Commit()
+            for s in self.spectral_slices
+            ]
+        self.slice2 = [
+            MPI.DOUBLE_COMPLEX.Create_subarray(
+                [ self.pdims[0],
+                  self.local_spectral_slice[1].stop - self.local_spectral_slice[1].start,
+                  self.sdims[2]//2+1
+                ],
+                [ p[0].stop - p[0].start,
+                  self.local_spectral_slice[1].stop - self.local_spectral_slice[1].start,
+                  self.sdims[2]//2+1
+                ],
+                [ p[0].start, 0, 0 ],
+                ).Commit()
+            for p in self.physical_slices
+            ]
+           
     def xgrid(self):
         return (2*numpy.pi/self.pdims[:,numpy.newaxis,numpy.newaxis,numpy.newaxis,]) \
           *numpy.mgrid[:self.pdims[0],:self.pdims[1],:self.pdims[2]]
@@ -154,7 +180,6 @@ class SpectralGrid(object):
             fftfreq1[k[1]],
             rfftfreq[k[2]]
             ] )
-        
         
 
 class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
@@ -254,17 +279,19 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         t2 = numpy.zeros(
             t1.shape[:-3]
             + ( self.grid.pdims[0],
-                self.grid.sdims[1]//self.grid.comm.size,
+                self.grid.local_spectral_slice[1].stop - self.grid.local_spectral_slice[1].start,
                 self.grid.sdims[2]//2+1 ),
             dtype=complex
             )
         count = numpy.prod(self.shape[:-3], dtype=int)
         t1a = t1.reshape(count, *t1.shape[-3:])
         t2a = t2.reshape(count, *t2.shape[-3:])
+        counts = [1] * self.grid.comm.size
+        displs = [0] * self.grid.comm.size
         for t1b, t2b in zip(t1a, t2a):
-            self.grid.comm.Alltoall(
-                [ t1b, 1, self.grid.slice1 ],
-                [ t2b, 1, self.grid.slice2 ],
+            self.grid.comm.Alltoallw(
+                [ t1b, counts, displs, self.grid.slice1 ],
+                [ t2b, counts, displs, self.grid.slice2 ],
                 )
         t3 = numpy.fft.fft(
             t2,
@@ -392,7 +419,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         s = numpy.zeros(
             self.shape[:-3]
             + ( self.grid.pdims[0],
-                self.grid.sdims[1]//self.grid.comm.size,
+                self.grid.local_spectral_slice[1].stop - self.grid.local_spectral_slice[1].start,
                 self.grid.sdims[2]//2+1 ),
             dtype = complex
             )
@@ -400,7 +427,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
         t2 = numpy.zeros(
             self.shape[:-3]
-            + ( self.grid.pdims[0]//self.grid.comm.size,
+            + ( self.grid.local_physical_slice[0].stop - self.grid.local_physical_slice[0].start,
                 self.grid.sdims[1],
                 self.grid.sdims[2]//2+1 ),
             dtype=complex
@@ -408,14 +435,18 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         count = numpy.prod(self.shape[:-3], dtype=int)
         t1a = t1.reshape(count, *t1.shape[-3:])
         t2a = t2.reshape(count, *t2.shape[-3:])
+        #print(self.grid.comm.rank, displ1, flush=True)
+        #print(self.grid.comm.rank, "HELLO", flush=True)
+        counts = [1] * self.grid.comm.size
+        displs = [0] * self.grid.comm.size
         for t1b, t2b in zip(t1a, t2a):
-            self.grid.comm.Alltoall(
-                [ t1b, 1, self.grid.slice2 ],
-                [ t2b, 1, self.grid.slice1 ],
+            self.grid.comm.Alltoallw(
+                [ t1b, counts, displs, self.grid.slice2 ],
+                [ t2b, counts, displs, self.grid.slice1 ],
                 )
         t25 = numpy.zeros(
             self.shape[:-3]
-            + ( self.grid.pdims[0]//self.grid.comm.size,
+            + ( self.grid.local_physical_slice[0].stop - self.grid.local_physical_slice[0].start,
                 self.grid.pdims[1],
                 self.grid.pdims[2]//2+1 ),
             dtype=complex
@@ -464,8 +495,6 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                         )
                     )
                 )
-        #if self.grid.comm.rank == 0:
-        #    n /= self.grid.comm.size
         return n
 
     def set_mode(self, mode, val):

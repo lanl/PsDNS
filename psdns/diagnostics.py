@@ -5,12 +5,14 @@ import numpy
 
 
 class Diagnostics(object):
-    def __init__(self, tdump, outfile=sys.stderr):
+    def __init__(self, tdump, grid, outfile=sys.stderr):
         self.tdump = tdump
         self.lastdump = -1e9
+        self._needs_close = False
+        if grid.comm.rank != 0:
+            return
         if hasattr(outfile, 'write'):
             self.outfile = outfile
-            self._needs_close = False
         else:
             self.outfile = open(outfile, 'w')
             self._needs_close = True
@@ -36,7 +38,8 @@ class StandardDiagnostics(Diagnostics):
             ( label, getattr(self, label) )
             for label in fields
             ]
-
+        if kwargs['grid'].comm.rank != 0:
+            return
         self.writer = csv.DictWriter(
             self.outfile,
             [ 'time', ] + [ field[0] for field in self.fields ]
@@ -44,14 +47,16 @@ class StandardDiagnostics(Diagnostics):
         self.writer.writeheader()
 
     def tke(self, equations, uhat):
-        return 0.5*uhat[:3].norm()
+        u2 = uhat[:3].norm()
+        if uhat.grid.comm.rank == 0:
+            return 0.5*u2
     
     def dissipation(self, equations, uhat):
-        return 2*equations.nu*sum(
-            [ (1j*uhat.grid.k[i]*uhat[j]).norm()
+        enstrophy = [ (1j*uhat.grid.k[i]*uhat[j]).norm()
               for i in range(3) for j in range(3) ]
-            )
-
+        if uhat.grid.comm.rank == 0:
+            return 2*equations.nu*sum(enstrophy)
+        
     def G(self, equations, uhat):
         return sum( [
             (-uhat.grid.k[j]*uhat.grid.k[l]*uhat[i]).norm()
@@ -83,12 +88,12 @@ class StandardDiagnostics(Diagnostics):
             ] )
 
     def diagnostic(self, time, equations, uhat):
-        self.writer.writerow(
-            dict(time=time, **{
-                label: func(equations, uhat) for label, func in self.fields
-                })
-            )
-        self.outfile.flush()
+        row = dict(time=time, **{
+            label: func(equations, uhat) for label, func in self.fields
+            })
+        if uhat.grid.comm.rank == 0:
+            self.writer.writerow(row)
+            self.outfile.flush()
 
 
 class Spectra(Diagnostics):
