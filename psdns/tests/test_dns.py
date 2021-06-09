@@ -113,16 +113,17 @@ class TestDNS(unittest.TestCase):
         tests fail.  If they are uncommented, the latter tests pass,
         but this test requires N=2**5 to pass.
         """
-        equations=NavierStokes(Re=100)
+        grid = SpectralGrid(sdims=2**4-1, pdims=3*2**3)
+        equations = NavierStokes(Re=100)
         solver = RungeKutta(
             dt=0.01,
             tfinal=10.0,
             equations=equations,
             ic=equations.taylor_green_vortex(
-                SpectralGrid(sdims=2**4-1, pdims=3*2**3)
+                grid
                 ),
             diagnostics=[
-                TestDiagnostics(tdump=0.1)
+                TestDiagnostics(tdump=0.1, grid=grid)
                 ]
         )
         solver.run()

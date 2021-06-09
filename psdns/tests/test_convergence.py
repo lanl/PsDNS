@@ -33,13 +33,7 @@ class TestConvergence(unittest.TestCase):
         # plt.legend()
         if grids[0].comm.rank == 0:
             ns = [ grid.pdims[0] for grid in grids ]
-            fit = lambda x, A, n: A*x**n
-            popt, pcov = scipy.optimize.curve_fit(
-                fit,
-                ns,
-                errs,
-                method='trf',
-                )
+            fit = numpy.poly1d(numpy.polyfit(numpy.log(ns), numpy.log(errs), 1))
             plt.loglog(
                 ns,
                 errs,
@@ -47,21 +41,21 @@ class TestConvergence(unittest.TestCase):
                 )
             plt.plot(
                 ns,
-                fit(ns, *popt),
+                numpy.exp(fit(numpy.log(ns))),
                 'r-',
-                label=u"${:.2f}n^{{{:.2f}}}$".format(*popt)
+                label=f"p={fit.coeffs[0]:0.2g}",
                 )
             plt.legend()
             plt.xlabel("Number of points")
             plt.ylabel("Error")
             plt.savefig(filename)
             plt.clf()
-            self.assertLess(popt[1], -0.5)
+            self.assertLess(fit.coeffs[0], -1)
 
     def test_wave(self):
         self.convergence_test(
             equations=Wave(),
-            grids=[ SpectralGrid([2**n, 8, 2]) for  n in range(2, 12) ],
+            grids=[ SpectralGrid([2**n, 8, 2]) for  n in range(2, 8) ],
             solver_args={'dt': 0.001, 'tfinal': 1.0},
             filename="wave.pdf"
             )
