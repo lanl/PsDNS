@@ -57,35 +57,67 @@ class StandardDiagnostics(Diagnostics):
         if uhat.grid.comm.rank == 0:
             return 2*equations.nu*sum(enstrophy)
         
+    def urms(self, equations, uhat):
+        urms = uhat[0].norm()
+        if uhat.grid.comm.rank == 0:
+            return urms
+
+    def vrms(self, equations, uhat):
+        vrms = uhat[1].norm()
+        if uhat.grid.comm.rank == 0:
+            return vrms
+        
+    def wrms(self, equations, uhat):
+        wrms = uhat[2].norm()
+        if uhat.grid.comm.rank == 0:
+            return wrms
+
+    def S(self, equations, uhat):
+        gradu = uhat.grad().to_physical()
+        S = [
+            (gradu[i, k]*gradu[i, l]*gradu[l, k]).to_spectral().get_mode([0,0,0])
+            for i in range(3) for k in range(3) for l in range(3)
+            ]
+        if uhat.grid.comm.rank == 0:
+            return sum( [ s.real for s in S ] )
+        
     def G(self, equations, uhat):
-        return sum( [
+        G = [
             (-uhat.grid.k[j]*uhat.grid.k[l]*uhat[i]).norm()
             for i in range(3) for j in range(3)
             for l in range(3)
-            ] )
+            ]
+        if uhat.grid.comm.rank == 0:
+            return sum(G)
    
     def G3(self, equations, uhat):
-        return sum( [
+        G = [
             (-1j*uhat.grid.k[j]*uhat.grid.k[l]*uhat.grid.k[m]*uhat[i]).norm()
             for i in range(3) for j in range(3)
             for l in range(3) for m in range(3)
-            ] )
+            ]
+        if uhat.grid.comm.rank == 0:
+            return sum(G)
 
     def G4(self, equations, uhat):
-        return sum( [
+        G = [
             (uhat.grid.k[j]*uhat.grid.k[l]*uhat.grid.k[m]*uhat.grid.k[n]*uhat[i]).norm()
             for i in range(3) for j in range(3)
             for l in range(3) for m in range(3)
             for n in range(3)
-            ] )
+            ]
+        if uhat.grid.comm.rank == 0:
+            return sum(G)
 
     def G5(self, equations, uhat):
-        return sum( [
+        G = [
             (1j*uhat.grid.k[j]*uhat.grid.k[l]*uhat.grid.k[m]*uhat.grid.k[n]*uhat.grid.k[o]*uhat[i]).norm()
             for i in range(3) for j in range(3)
             for l in range(3) for m in range(3)
             for n in range(3) for o in range(3)
-            ] )
+            ]
+        if uhat.grid.comm.rank == 0:
+            return sum(G)
 
     def diagnostic(self, time, equations, uhat):
         row = dict(time=time, **{
