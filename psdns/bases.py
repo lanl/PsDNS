@@ -298,6 +298,33 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         else:
             return NotImplemented
 
+    def get_view(self):
+        extents = list(self.grid.sdims)
+        subextents = list(self.grid.sdims)
+        extents[2] = subextents[2] = self.grid.sdims[2]//2+1
+        subextents[1] = self.grid.local_spectral_slice[1].stop - self.grid.local_spectral_slice[1].start
+        starts = len(extents) * [ 0 ]
+        starts[1] = self.grid.local_spectral_slice[1].start
+        return MPI.DOUBLE_COMPLEX.Create_subarray(
+            extents, subextents, starts
+            ).Commit()
+        
+    def checkpoint(self, filename):
+        view = self.get_view()
+        fh = MPI.File.Open(self.grid.comm, filename, MPI.MODE_WRONLY|MPI.MODE_CREATE)
+        fh.Set_view(0, filetype=view)
+        fh.Write_all(self._data)
+        fh.Close()
+        view.Free()
+
+    def read_checkpoint(self, filename):
+        view = self.get_view()
+        fh = MPI.File.Open(self.grid.comm, filename, MPI.MODE_RDONLY)
+        fh.Set_view(0, filetype=view)
+        fh.Read_all(self._data)
+        fh.Close()        
+        view.Free()
+        
     def copy(self):
         return SpectralArray(self._data.copy(), self.grid)
         
