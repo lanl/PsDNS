@@ -401,6 +401,12 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
 
     def grad(self):
         return 1j*self[...,numpy.newaxis,:,:,:]*self.grid.k
+
+    def div(self):
+        return SpectralArray(
+            1j*numpy.einsum("i...,i...->...", self.grid.k, self),
+            self.grid
+            )
     
     def curl(self):
         """Curl of a spectral variable, in physical space.
