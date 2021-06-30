@@ -3,6 +3,7 @@
 This module defines the various spectral bases that can be used to
 write solvers.
 """
+from functools import cached_property
 import warnings
 
 import numpy
@@ -109,7 +110,18 @@ class SpectralGrid(object):
                 ).Commit()
             for p in self.physical_slices
             ]
-           
+
+    @cached_property
+    def P(self):
+        """Navier-Stokes pressure projection operator.
+
+        Since this is only used by Navier-Stokes operators, it is
+        maintained as a cached property.
+        """
+        return (numpy.eye(3)[:,:,None,None,None]
+                -self.k[None,...]*self.k[:,None,...]
+                /numpy.where(self.k2==0, 1, self.k2))
+        
     def xgrid(self):
         return (2*numpy.pi/self.pdims[:,numpy.newaxis,numpy.newaxis,numpy.newaxis,]) \
           *numpy.mgrid[:self.pdims[0],:self.pdims[1],:self.pdims[2]]

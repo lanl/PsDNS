@@ -72,20 +72,12 @@ class NavierStokes(object):
         self.Re = Re
         self.nu = 1/Re
 
-    def initP(self, uhat):
-        # Only compute this once
-        if not hasattr(self, 'P'):
-            self.P = (numpy.eye(3)[:,:,None,None,None]
-                -uhat.grid.k[None,...]*uhat.grid.k[:,None,...]
-                /numpy.where(uhat.grid.k2==0, 1, uhat.grid.k2))
-
     def rhs(self, uhat):
-        self.initP(uhat)
         u = uhat.to_physical()
         vorticity = uhat.curl().to_physical()
         nl = numpy.cross(u, vorticity, axis=0)
         nl = PhysicalArray(nl, uhat.grid).to_spectral()
-        du = numpy.einsum("ij...,j...->i...", self.P, nl)
+        du = numpy.einsum("ij...,j...->i...", uhat.grid.P, nl)
         du -= self.nu*uhat.grid.k2*uhat
         return du
 
@@ -131,13 +123,12 @@ class SimplifiedSmagorinsky(NavierStokes):
         self.Cs = Cs
         
     def rhs(self, uhat):
-        self.initP(uhat)
         u = uhat.to_physical()
         vorticity = uhat.curl()
         nu_t = (self.Cs*uhat.grid.dx)**2*numpy.sqrt(numpy.sum(vorticity.norm()))
         nl = numpy.cross(u, vorticity.to_physical(), axis=0)
         nl = PhysicalArray(nl, uhat.grid).to_spectral()
-        du = numpy.einsum("ij...,j...->i...", self.P, nl)
+        du = numpy.einsum("ij...,j...->i...", uhat.grid.P, nl)
         du -= (self.nu+nu_t)*uhat.grid.k2*uhat
         return du
 
@@ -190,7 +181,6 @@ class Smagorinsky(SimplifiedSmagorinsky):
         \nu_T = \left( C_s \Delta \right)^2 \sqrt{S_{ij} S_{ij}}
     """
     def rhs(self, uhat):
-        self.initP(uhat)
         u = uhat.to_physical()
         gradu = uhat.grad().to_physical()
         Sij = ((gradu + gradu.transpose(1,0,2,3,4))/2)
@@ -199,7 +189,7 @@ class Smagorinsky(SimplifiedSmagorinsky):
         nl2 = numpy.einsum("k...,jk...->j...", u, gradu)
         nl2 = PhysicalArray(nl2, uhat.grid).to_spectral()
         nl = 1j*nl1 - nl2
-        du = numpy.einsum("ij...,j...->i...", self.P, nl)
+        du = numpy.einsum("ij...,j...->i...", uhat.grid.P, nl)
         du -= self.nu*uhat.grid.k2*uhat
         return du
 
@@ -270,8 +260,6 @@ class KEpsilon(NavierStokes):
         self.clip = clip
 
     def rhs(self, uhat):
-        self.initP(uhat)
-
         # Clipping
         K = uhat[3].to_physical()
         epsilon = uhat[4].to_physical()
@@ -295,7 +283,7 @@ class KEpsilon(NavierStokes):
         nl2 = numpy.einsum("k...,jk...->j...", u, gradu)
         nl2 = PhysicalArray(nl2, uhat.grid).to_spectral()
         nl = 1j*nl1 - nl2
-        du = numpy.einsum("ij...,j...->i...", self.P, nl)        
+        du = numpy.einsum("ij...,j...->i...", uhat.grid.P, nl)        
         du -= self.nu*uhat.grid.k2*uhat[:3]
 
         # Turbulent prodution
