@@ -78,9 +78,10 @@ class SpectralGrid(object):
             for i in range(self.comm.size)
             ]
         self.local_spectral_slice = self.spectral_slices[self.comm.rank]
-        self.x = self.xgrid()[(slice(None),)+self.local_physical_slice]
-        self.dx = (2*numpy.pi/self.x.shape[1])
-        self.k = self.kgrid()[(slice(None),)+self.local_spectral_slice]
+        self.dx = 2*numpy.pi/self.pdims
+        self.x = self.dx[:,numpy.newaxis,numpy.newaxis,numpy.newaxis] \
+          *numpy.mgrid[self.local_physical_slice]
+        self.k = self.kgrid()
         self.k2 =  numpy.sum(self.k*self.k, axis=0)
         self.slice1 = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
@@ -122,12 +123,8 @@ class SpectralGrid(object):
                 -self.k[None,...]*self.k[:,None,...]
                 /numpy.where(self.k2==0, 1, self.k2))
         
-    def xgrid(self):
-        return (2*numpy.pi/self.pdims[:,numpy.newaxis,numpy.newaxis,numpy.newaxis,]) \
-          *numpy.mgrid[:self.pdims[0],:self.pdims[1],:self.pdims[2]]
-
     def kgrid(self):
-        k = numpy.mgrid[:self.sdims[0],:self.sdims[1],:self.sdims[2]//2+1]
+        k = numpy.mgrid[self.local_spectral_slice]
         # Note, use sample spacing/2pi to get radial frequencies, rather than circular frequencies.
         fftfreq0 = numpy.fft.fftfreq(self.pdims[0], 1/self.pdims[0])[[*range(0, (self.sdims[0]+1)//2), *range(-(self.sdims[0]//2), 0)]]
         fftfreq1 = numpy.fft.fftfreq(self.pdims[1], 1/self.pdims[1])[[*range(0, (self.sdims[1]+1)//2), *range(-(self.sdims[1]//2), 0)]]
