@@ -1,4 +1,5 @@
 from functools import partial
+from math import log
 import unittest
 
 import matplotlib
@@ -31,35 +32,35 @@ class ScalingTest(unittest.TestCase):
         diagnostics=[]
         )
     
-    def plot_wall_time(self, runtimes):
-        plt.plot(self.ncpus, plt.array(runtimes)/plt.array(self.ncpus), 'sk')
+    def plot_wall_time(self, runtimes, ncpus):
+        plt.plot(ncpus, plt.array(runtimes)/plt.array(ncpus), 's')
         plt.xlabel("Number of CPUs")
         plt.ylabel("Wall time (s)")
         plt.xscale('log')
         plt.yscale('log')
         
-    def plot_speedup(self, runtimes):
+    def plot_speedup(self, runtimes, ncpus):
         plt.plot(
-            self.ncpus,
-            runtimes[0]*plt.array(self.ncpus)/plt.array(runtimes),
-            'sk'
+            ncpus,
+            runtimes[0]*plt.array(ncpus)/plt.array(runtimes),
+            's'
             )
         plt.plot(
-            [ 1, self.ncpus[-1] ],
-            [ 1, self.ncpus[-1] ],
+            [ 1, ncpus[-1] ],
+            [ 1, ncpus[-1] ],
             '--k'
             )
         plt.xlabel("Number of CPUs")
         plt.ylabel("Speedup")
 
-    def plot_efficiency(self, runtimes):
+    def plot_efficiency(self, runtimes, ncpus):
         plt.plot(
-            self.ncpus,
+            ncpus,
             runtimes[0]/plt.array(runtimes),
-            'sk'
+            's'
             )
         plt.plot(
-            [ 1, self.ncpus[-1] ],
+            [ 1, ncpus[-1] ],
             [ 1, 1 ],
             '--k'
             )
@@ -67,9 +68,15 @@ class ScalingTest(unittest.TestCase):
         plt.ylabel("Parallel Efficiency")
         plt.ylim(0, 1.1)
 
-    def run_cases(self):
+    def log_cpus(self, start, stop):
+        maxsize = int(log(MPI.COMM_WORLD.size, 2))
+        return numpy.array(
+            [ 2**n for n in range(start, min(stop, maxsize)+1) ]
+            )
+        
+    def run_cases(self, ncpus, grids):
         runtimes = []
-        for ncpu, grid in zip(self.ncpus, self.grids):
+        for ncpu, grid in zip(ncpus, grids):
             # Only run on `ncpu` processes
             if MPI.COMM_WORLD.rank < ncpu:
                 solver = self.integrator(ic=self.ic(grid))
@@ -77,29 +84,48 @@ class ScalingTest(unittest.TestCase):
                 runtime = grid.comm.reduce(solver.runtime)
                 if MPI.COMM_WORLD.rank == 0:
                     runtimes.append(runtime)
-        return runtimes
+        return numpy.array(runtimes)
 
 
+@unittest.skipIf(
+    MPI.COMM_WORLD.size == 1,
+    "More tasks required to test parallel scaling"
+    )
 class TestStrongScaling(ScalingTest):
-    ncpus = [ 1, 2, 3, 4 ]
-    grids = (
-        SpectralGrid(32, comm=MPI.COMM_WORLD.Split(MPI.COMM_WORLD.rank//ncpu, 0))
-        for ncpu in ncpus
-        )
-
-    def test_strong_scaling_tgv(self):
+    def run_strong_scaling_tgv(self, start, stop, size):
         """Strong scaling for the Navier-Stokes equations"""
-        runtimes = self.run_cases()
+        ncpus = self.log_cpus(start, stop)
+        grids = (
+            SpectralGrid(
+                size,
+                comm=MPI.COMM_WORLD.Split(MPI.COMM_WORLD.rank//ncpu, 0)
+                )
+            for ncpu in ncpus
+            )
+        runtimes = self.run_cases(ncpus, grids)
         if MPI.COMM_WORLD.rank == 0:
-            plt.figure(figsize=(9, 3))
             plt.subplot(131)
-            self.plot_wall_time(runtimes)
+            self.plot_wall_time(runtimes, ncpus)
             plt.subplot(132)
-            self.plot_speedup(runtimes)
+            self.plot_speedup(runtimes, ncpus)
             plt.subplot(133)
-            self.plot_efficiency(runtimes)
+            self.plot_efficiency(runtimes, ncpus)
             plt.tight_layout()
-            plt.savefig("strong.pdf")
+            # Parallel efficiency should be greater than 80%
+            self.assertGreaterEqual(
+                (runtimes[0]/runtimes).min(),
+                0.5
+                )
+            
+    def test_strong_scaling_tgv(self):
+        plt.figure(figsize=(9, 3))
+        with self.subTest(N=32):
+            self.run_strong_scaling_tgv(0, 6, 64)
+        with self.subTest(N=256):
+            self.run_strong_scaling_tgv(3, 8, 256)
+        with self.subTest(N=1024):
+            self.run_strong_scaling_tgv(8, 10, 1024)
+        plt.savefig("strong.pdf")
 
 
 class TestWeakScaling(ScalingTest):
