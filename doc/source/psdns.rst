@@ -22,4 +22,3 @@ Submodules
    psdns.bases
    psdns.diagnostics
    psdns.integrators
-   psdns.solvers

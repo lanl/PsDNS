@@ -1,3 +1,15 @@
+"""Tests to demonstrate the parallel scaling of the code.
+
+The tests in this module are primarily easy ways to check the parallel
+scaling of the code when changes are made, or when deployed to new
+architectures.  The tests to provide a pass/fail result based on the
+measured scaling, however, the primary purpose of the tests is in
+producing the scaling plots they output.
+
+Currently, the module tests both strong and weak scaling, and all the
+tests are performed for the basic DNS Navier-Stokes solver without
+aliasing.
+"""
 from functools import partial
 from math import log
 import unittest
@@ -11,19 +23,39 @@ import scipy.optimize
 from mpi4py import MPI
 
 from psdns import *
+from psdns.tests import PlotTestMixin
 from psdns.equations.navier_stokes import NavierStokes
 
 
 class ScalingTest(unittest.TestCase):
-    ncpus = []
+    """A base class for scaling tests.
+
+    This base class provides the generic functionality for parallel
+    scaling tests, and should be subclassed to create specific test
+    cases.
+    """
+    #: A iterable with the number of MPI ranks for each case in the
+    #: scaling test.  Subclasses should replace this with a non-empty
+    #: list.
+    #ncpus = []
     # Note, use a generator expression, not a list, to avoid creating
     # grids until they are needed.
-    grids = ()
-    #: A callable which takes a single :class:`SpectralGrid` as an
-    #: argument, and returns a :class:`SpectralArray` for the initial
-    #: condition.
+    #grids = ()
+
+
+    #: The equation class to use for the scaling test.
+    #:
+    #: The default is a Navier-Stokes at :math:`\mathrm{Re}=100`, but
+    #: this can be overridden in sub-classes.
     equations = NavierStokes(Re=100)
+    #: A callable which returns the initial conditions.  It should take
+    #: a single :class:`SpectralGrid` as an argument, and return a
+    #: :class:`SpectralArray` for the initial condition.
+    #:
+    #: The default is a Taylor-Green vortex.
     ic = equations.taylor_green_vortex
+    #: A callable which will be used to instantiate the integrator for
+    #: the test cases.
     integrator = partial(
         RungeKutta,
         dt=0.01,
@@ -31,32 +63,65 @@ class ScalingTest(unittest.TestCase):
         equations=equations,
         diagnostics=[]
         )
-    
-    def plot_wall_time(self, runtimes, ncpus):
-        plt.plot(ncpus, plt.array(runtimes)/plt.array(ncpus), 's')
-        plt.xlabel("Number of CPUs")
+
+    def plot_wall_time(self, runtimes, ncpus, label="", scaling='strong'):
+        """Plot the wall clock time.
+
+        Plot the wall clock time as a function of MPI ranks.  The
+        reported value of the wall time is actually the average of the
+        run time across processors, as measured by the :func:`time.time` 
+        funtion.  A line showing perfect speedup is also plotted, for
+        reference.
+        """
+        walltimes = runtimes/ncpus
+        plt.plot(ncpus, walltimes, 's', label=label)
+        if scaling == 'strong':
+            plt.plot(ncpus, walltimes[0]*ncpus[0]/ncpus, 'k--')
+        elif scaling == 'weak':
+            plt.plot(
+                [ 1, ncpus[-1] ],
+                [ walltimes[0], walltimes[0] ],
+                '--k',
+                )
+        plt.xlabel("Number of MPI ranks")
         plt.ylabel("Wall time (s)")
         plt.xscale('log')
         plt.yscale('log')
-        
+        plt.legend()
+    
     def plot_speedup(self, runtimes, ncpus):
+        """Plot the parallel speedup.
+
+        Plot the speedup as a function of MPI ranks.  Note that the
+        speedup is computed relative to the lowest rank case run, which
+        in general may not be serial, since, for large problems, running
+        on a single processor may require too much memory, or too long a
+        run time.
+        """
         plt.plot(
             ncpus,
-            runtimes[0]*plt.array(ncpus)/plt.array(runtimes),
-            's'
+            runtimes[0]*ncpus/runtimes,
+            's',
             )
         plt.plot(
             [ 1, ncpus[-1] ],
             [ 1, ncpus[-1] ],
-            '--k'
+            '--k',
             )
-        plt.xlabel("Number of CPUs")
+        plt.xlabel("Number of MPI ranks")
         plt.ylabel("Speedup")
+        plt.xscale('log')
+        plt.yscale('log')
 
     def plot_efficiency(self, runtimes, ncpus):
+        """Plot the parallel efficiency.
+
+        Plot the parallel efficiency as a function of MPI ranks.  Note
+        the caveat applies here as for :meth:`plot_speedup`.
+        """
         plt.plot(
             ncpus,
-            runtimes[0]/plt.array(runtimes),
+            runtimes[0]/runtimes,
             's'
             )
         plt.plot(
@@ -64,17 +129,22 @@ class ScalingTest(unittest.TestCase):
             [ 1, 1 ],
             '--k'
             )
-        plt.xlabel("Number of CPUs")
+        plt.xlabel("Number of MPI ranks")
         plt.ylabel("Parallel Efficiency")
         plt.ylim(0, 1.1)
 
-    def log_cpus(self, start, stop):
-        maxsize = int(log(MPI.COMM_WORLD.size, 2))
-        return numpy.array(
-            [ 2**n for n in range(start, min(stop, maxsize)+1) ]
-            )
-        
     def run_cases(self, ncpus, grids):
+        """Run a series of runs on different numbers of MPI ranks.
+
+        Given a list *ncpus*, and an iterable of *grids*, compute the
+        initial condition and run the equation on each grid using the
+        number of MPI ranks from the corresponding element in *ncpus*.
+        As an individual grid may be quite large, *grids* should use a
+        generator to compute each grid as needed.
+
+        The return value is a list of runtimes (total wall clock time
+        used by each rank) for the corresponding runs.
+        """
         runtimes = []
         for ncpu, grid in zip(ncpus, grids):
             # Only run on `ncpu` processes
@@ -89,59 +159,106 @@ class ScalingTest(unittest.TestCase):
 
 @unittest.skipIf(
     MPI.COMM_WORLD.size == 1,
-    "More tasks required to test parallel scaling"
+    "More ranks required to test strong scaling"
     )
-class TestStrongScaling(ScalingTest):
-    def run_strong_scaling_tgv(self, start, stop, size):
+class TestStrongScaling(ScalingTest, PlotTestMixin):
+    """Test strong scaling for the Navier-Stokes equations."""
+    #: A list of cases to run.  Each case is defined by a tuple
+    #: consisting of the problem size, and the minimum and maximum
+    #: number of processors (specified as powers of two) to run on.
+    cases = [
+        ( 64, 0, 6 ),
+        ( 256, 3, 8 ),
+        ( 1024, 8, 10 )
+        ]
+        
+    def test_strong_scaling_tgv(self):
         """Strong scaling for the Navier-Stokes equations"""
-        ncpus = self.log_cpus(start, stop)
+        plt.figure(figsize=(9, 3))
+        for N, nmin, nmax in self.cases:
+            with self.subTest(N=N):
+                ncpus = numpy.array(
+                    [ 2**n for n in range(nmin, nmax)
+                      if 2**n <= MPI.COMM_WORLD.size ]
+                    )
+                if MPI.COMM_WORLD.rank == 0:
+                    print(N, ncpus.size, ncpus, flush=True)
+                if ncpus.size == 0:
+                    continue
+                grids = (
+                    SpectralGrid(
+                        N,
+                        comm=MPI.COMM_WORLD.Split(MPI.COMM_WORLD.rank//ncpu, 0)
+                        )
+                    for ncpu in ncpus
+                    )
+                runtimes = self.run_cases(ncpus, grids)
+                if MPI.COMM_WORLD.rank == 0:
+                    # Check that the scaling is reasonable
+                    fit = lambda x, A, n: A*x**-n
+                    popt, pcov = scipy.optimize.curve_fit(
+                        fit,
+                        ncpus,
+                        runtimes/ncpus,
+                        )
+                    self.assertGreaterEqual(
+                        popt[1],
+                        0.8,
+                        )
+                    # Plot the results
+                    plt.subplot(131)
+                    self.plot_wall_time(runtimes, ncpus, f"$N={N}^3$")
+                    plt.subplot(132)
+                    self.plot_speedup(runtimes, ncpus)
+                    plt.subplot(133)
+                    self.plot_efficiency(runtimes, ncpus)
+                    plt.tight_layout()
+        self.savefig()
+        
+
+@unittest.skipIf(
+    MPI.COMM_WORLD.size < 8,
+    "More ranks required to test weak scaling"
+    )
+class TestWeakScaling(ScalingTest, PlotTestMixin):
+    """Test weak scaling for the Navier-Stokes equations.
+
+    **A note about weak scaling:** Usually, for a weak scaling test, the
+    number of ranks and the problem size are scaled together, so that
+    the run time for the problem remains fixed.  The FFT algorithm
+    scales as :math:`N \log N`, which make this difficult.  For the
+    psuedo-spectral DNS, we assume that the performance is dominated by
+    the FFTs.  Since three-dimensional FFTs consist of three sequential
+    one-dimensional FFTs, and there are :math:`N^2` one-dimensional
+    FFTs per direction, the overall scaling is :math:`3 N^3 \log N`.
+    Consequently, we must rescale the run times by :math:`\log N` to
+    obtain constant scaling.
+    """
+    def test_weak_scaling_tgv(self):
+        """Weak scaling for the Navier-Stokes equations"""
+        ncpus = [
+            2**(3*n) for n in range(5)
+            if 2**(3*n) <= MPI.COMM_WORLD.size
+            ]
+        size = [
+            2**(n+6) for n in range(5)
+            if 2**(3*n) <= MPI.COMM_WORLD.size
+            ]
         grids = (
             SpectralGrid(
-                size,
+                n,
                 comm=MPI.COMM_WORLD.Split(MPI.COMM_WORLD.rank//ncpu, 0)
                 )
-            for ncpu in ncpus
+            for n, ncpu in zip(size, ncpus)
             )
         runtimes = self.run_cases(ncpus, grids)
         if MPI.COMM_WORLD.rank == 0:
-            plt.subplot(131)
-            self.plot_wall_time(runtimes, ncpus)
-            plt.subplot(132)
-            self.plot_speedup(runtimes, ncpus)
-            plt.subplot(133)
-            self.plot_efficiency(runtimes, ncpus)
-            plt.tight_layout()
-            # Parallel efficiency should be greater than 80%
-            self.assertGreaterEqual(
-                (runtimes[0]/runtimes).min(),
-                0.5
+            self.plot_wall_time(
+                runtimes/numpy.log2(numpy.array(size)),
+                ncpus,
+                scaling='weak'
                 )
-            
-    def test_strong_scaling_tgv(self):
-        plt.figure(figsize=(9, 3))
-        with self.subTest(N=32):
-            self.run_strong_scaling_tgv(0, 6, 64)
-        with self.subTest(N=256):
-            self.run_strong_scaling_tgv(3, 8, 256)
-        with self.subTest(N=1024):
-            self.run_strong_scaling_tgv(8, 10, 1024)
-        plt.savefig("strong.pdf")
-
-
-class TestWeakScaling(ScalingTest):
-    ncpus = [ 1, 8, 64 ]
-    grids = (
-        SpectralGrid(n, comm=MPI.COMM_WORLD.Split(MPI.COMM_WORLD.rank//ncpu, 0))
-        for n, ncpu in zip([ 32, 64, 128 ], ncpus)
-        )
-
-    def test_weak_scaling_tgv(self):
-        """Strong scaling for the Navier-Stokes equations"""
-        runtimes = self.run_cases()
-        if MPI.COMM_WORLD.rank == 0:
-            plt.figure(figsize=(3, 3))
-            self.plot_wall_time(runtimes)
+            plt.ylabel(r"Wall time (s) / $\log_2 N$")
+            plt.gca().get_legend().remove()
             plt.tight_layout()
-            plt.savefig("weak.pdf")
-
-
+            self.savefig()

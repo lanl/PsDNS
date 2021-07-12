@@ -31,6 +31,7 @@ version = '0.1'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosectionlabel',
+    'sphinx.ext.intersphinx',
     'sphinx.ext.viewcode',
 ]
 
@@ -76,3 +77,6 @@ autodoc_default_options = {
     'member-order': 'bysource',
     }
 autodoc_inherit_docstrings = False
+
+# -- Options for intersphinx extension ---------------------------------------
+intersphinx_mapping = { 'python': ( 'https://docs.python.org/3', None ) }
