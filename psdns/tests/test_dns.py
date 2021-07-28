@@ -1,8 +1,3 @@
-import unittest
-
-import matplotlib
-matplotlib.use('PDF')
-import matplotlib.pylab as plt
 import numpy
 from numpy import testing as nptest
 
@@ -98,7 +93,7 @@ class TestDiagnostics(Diagnostics):
             self.dumps.append( [ time, equations.nu*sum(eps) ] )
 
 
-class TestDNS(unittest.TestCase):
+class TestDNS(tests.TestCase):
     def test_Brachet_Re100(self):
         """Comparision of DNS to Brachet (1983) data, Re=100
 
@@ -129,13 +124,17 @@ class TestDNS(unittest.TestCase):
         solver.run()
         if solver.uhat.grid.comm.rank == 0:
             output = numpy.array(solver.diagnostics_list[0].dumps).T
-            plt.plot(brachet_data[0], brachet_data[1], label="Brachet (1993)")
-            plt.plot(output[0], output[1], label="This code")
-            plt.title("Comparision to published data")
-            plt.xlabel("Time")
-            plt.ylabel("Dissiapation Rate")
-            plt.legend()
-            plt.savefig("Brachet_Re100.pdf")
+            with self.subplots() as (fig, ax):
+                ax.plot(
+                    brachet_data[0],
+                    brachet_data[1],
+                    label="Brachet (1993)"
+                    )
+                ax.plot(output[0], output[1], label="This code")
+                ax.set_title("Comparision to published data")
+                ax.set_xlabel("Time")
+                ax.set_ylabel("Dissiapation Rate")
+                fig.legend()
             nptest.assert_allclose(
                 output[1],
                 numpy.interp(output[0], brachet_data[0], brachet_data[1]),

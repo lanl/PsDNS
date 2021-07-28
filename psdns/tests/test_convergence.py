@@ -1,8 +1,3 @@
-import unittest
-
-import matplotlib
-matplotlib.use('PDF')
-import matplotlib.pylab as plt
 import numpy
 import scipy.optimize
 
@@ -10,7 +5,7 @@ from psdns import *
 from psdns.equations.linear import Wave, Burgers
 
 
-class TestConvergence(unittest.TestCase):   
+class TestConvergence(tests.TestCase):
     def convergence_test(self, equations, grids, solver_args, filename):
         errs = []
         for grid in grids:
@@ -34,22 +29,21 @@ class TestConvergence(unittest.TestCase):
         if grids[0].comm.rank == 0:
             ns = [ grid.pdims[0] for grid in grids ]
             fit = numpy.poly1d(numpy.polyfit(numpy.log(ns), numpy.log(errs), 1))
-            plt.loglog(
-                ns,
-                errs,
-                'ko',
-                )
-            plt.plot(
-                ns,
-                numpy.exp(fit(numpy.log(ns))),
-                'r-',
-                label=f"p={fit.coeffs[0]:0.2g}",
-                )
-            plt.legend()
-            plt.xlabel("Number of points")
-            plt.ylabel("Error")
-            plt.savefig(filename)
-            plt.clf()
+            with self.subplots() as (fig, ax):
+                ax.loglog(
+                    ns,
+                    errs,
+                    'ko',
+                    )
+                ax.plot(
+                    ns,
+                    numpy.exp(fit(numpy.log(ns))),
+                    'r-',
+                    label=f"p={fit.coeffs[0]:0.2g}",
+                    )
+                ax.set_xlabel("Number of points")
+                ax.set_ylabel("Error")
+                ax.legend()
             self.assertLess(fit.coeffs[0], -1)
 
     def test_wave(self):

@@ -1,12 +1,7 @@
-import unittest
-
-
-import matplotlib
-matplotlib.use('PDF')
-import matplotlib.pylab as plt
 import numpy
 from numpy import testing as nptest
 
+from mpi4py import MPI
 
 from psdns import *
 from psdns.equations.navier_stokes import KEpsilon
@@ -33,7 +28,7 @@ class ShearLayer(KEpsilon):
         return U
 
 
-class TestRANS(unittest.TestCase):
+class TestRANS(tests.TestCase):
     def test_shear_layer(self):
         """Finite thickness one-dimensional shear-layer exact solution (Israel, 2018)
         """
@@ -45,31 +40,29 @@ class TestRANS(unittest.TestCase):
             tfinal=21.0,
             equations=equations,
             ic=equations.exact(
-                SpectralGrid(sdims=[1, 2**6, 1]), t0
+                SpectralGrid(sdims=[MPI.COMM_WORLD.size, 2**6, 1]), t0
                 ).to_spectral(),
         )
         solver.run()
-
         exact = equations.exact(solver.uhat.grid, solver.time)
         u = solver.uhat.to_physical()
-        plt.subplot(311)
-        plt.plot(u.grid.x[1,0,:,0], exact[0,0,:,0], label="Exact solution")
-        plt.plot(u.grid.x[1,0,:,0], u[0,0,:,0], '+', label="Computed solution")
-        plt.title("Comparision to exact solution")
-        plt.xticks([])
-        plt.ylabel("Velocity")
-        plt.legend()
-        plt.subplot(312)
-        plt.plot(u.grid.x[1,0,:,0], exact[3,0,:,0], label="Exact solution")
-        plt.plot(u.grid.x[1,0,:,0], u[3,0,:,0], '+', label="Computed solution")
-        plt.xticks([])
-        plt.ylabel("TKE")
-        plt.subplot(313)
-        plt.plot(u.grid.x[1,0,:,0], exact[4,0,:,0], label="Exact solution")
-        plt.plot(u.grid.x[1,0,:,0], u[4,0,:,0], '+', label="Computed solution")
-        plt.xlabel("Y")
-        plt.ylabel("Dissipation")
-        plt.savefig("ShearLayer.pdf")
+        if MPI.COMM_WORLD.rank != 0:
+            return
+        with self.subplots(3, 1) as (fig, axs):
+            axs[0].plot(u.grid.x[1,0,:,0], exact[0,0,:,0], label="Exact solution")
+            axs[0].plot(u.grid.x[1,0,:,0], u[0,0,:,0], '+', label="Computed solution")
+            axs[0].set_title("Comparision to exact solution")
+            axs[0].set_xticks([])
+            axs[0].set_ylabel("Velocity")
+            axs[1].plot(u.grid.x[1,0,:,0], exact[3,0,:,0], label="Exact solution")
+            axs[1].plot(u.grid.x[1,0,:,0], u[3,0,:,0], '+', label="Computed solution")
+            axs[1].set_xticks([])
+            axs[1].set_ylabel("TKE")
+            axs[2].plot(u.grid.x[1,0,:,0], exact[4,0,:,0], label="Exact solution")
+            axs[2].plot(u.grid.x[1,0,:,0], u[4,0,:,0], '+', label="Computed solution")
+            axs[2].set_xlabel("Y")
+            axs[2].set_ylabel("Dissipation")
+            axs[0].legend()
         nptest.assert_allclose(
             u,
             exact,
