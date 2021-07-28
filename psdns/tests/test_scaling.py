@@ -212,7 +212,7 @@ class TestStrongScaling(ScalingTest):
                     self.plot_wall_time(axs[0], runtimes, ncpus, f"$N={N}^3$")
                     self.plot_speedup(axs[1], runtimes, ncpus)
                     self.plot_efficiency(axs[2], runtimes, ncpus)
-                    fig.set_title(cpu_description)
+                    fig.suptitle(cpu_description)
                     fig.tight_layout()
         
 
@@ -238,12 +238,9 @@ class TestWeakScaling(ScalingTest):
         """Weak scaling for the Navier-Stokes equations"""
         ncpus = [
             2**n for n in range(13)
-            if 2**(3*n) <= MPI.COMM_WORLD.size
+            if 2**n <= MPI.COMM_WORLD.size
             ]
-        size = [
-            int(2**(n/3+6)) for n in range(13)
-            if 2**(3*n) <= MPI.COMM_WORLD.size
-            ]
+        size = [ int(2**6*ncpu**(1/3)) for ncpu in ncpus ]
         grids = (
             SpectralGrid(
                 n,
@@ -264,4 +261,4 @@ class TestWeakScaling(ScalingTest):
                 ax.set_yscale('linear')
                 ax.set_ylim(ymin=0)
                 ax.get_legend().remove()
-                fig.set_title(cpu_description)
+                fig.suptitle(cpu_description)
