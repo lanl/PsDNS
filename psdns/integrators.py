@@ -95,12 +95,14 @@ class ImplicitEuler(Integrator):
         for i in range(self.niter):
             dU = self.uhat0 - self.uhat + self.dt*self.equations.rhs(self.uhat)
             self.uhat += self.alpha*dU
-            res = numpy.linalg.norm(dU)
-            self.resfile.write("{} {}\n".format(i, res))
-            self.resfile.flush()
+            res = numpy.sqrt(self.uhat.grid.comm.bcast(dU.norm(), root=0))
+            if self.uhat.grid.comm.rank == 0:
+                self.resfile.write("{} {}\n".format(i, res))
+                self.resfile.flush()
             if res<self.tol:
                 break
-        self.resfile.write("\n\n")
+        if self.uhat.grid.comm.rank == 0:
+            self.resfile.write("\n\n")
 
 
 class RungeKutta(Integrator):
