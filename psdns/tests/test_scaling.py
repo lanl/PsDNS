@@ -133,6 +133,7 @@ class ScalingTest(tests.TestCase):
             )
         ax.set_xlabel("Number of MPI ranks")
         ax.set_ylabel("Parallel Efficiency")
+        ax.set_xscale('log')
         ax.set_ylim(0, 1.1)
 
     def run_cases(self, ncpus, grids):
@@ -240,7 +241,7 @@ class TestWeakScaling(ScalingTest):
             2**n for n in range(13)
             if 2**n <= MPI.COMM_WORLD.size
             ]
-        size = [ int(2**6*ncpu**(1/3)) for ncpu in ncpus ]
+        size = [ int(2**6*numpy.cbrt(ncpu)) for ncpu in ncpus ]
         grids = (
             SpectralGrid(
                 n,
@@ -258,7 +259,6 @@ class TestWeakScaling(ScalingTest):
                     scaling='weak'
                     )
                 ax.set_ylabel(r"Wall time (s) / $\log_2 N$")
-                ax.set_yscale('linear')
                 ax.set_ylim(ymin=0)
                 ax.get_legend().remove()
                 fig.suptitle(cpu_description)

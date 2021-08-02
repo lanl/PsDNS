@@ -26,20 +26,3 @@ class TestCase(unittest.TestCase):
             if MPI.COMM_WORLD.rank == 0:
                 plt.savefig(os.path.join(self.testdir, self.id()[12:]+".pdf"))
             plt.clf()
-
-    # def plotfilename(self):
-    #     try:
-    #         os.mkdir(self.testdir)
-    #     except FileExistsError:
-    #         pass
-    #     return os.path.join(self.testdir, self.id()[12:]+".pdf")
-
-
-    # def savefig(self):
-    #     try:
-    #         os.mkdir(self.testdir)
-    #     except FileExistsError:
-    #         pass
-    #     finally:
-    #         plt.savefig(os.path.join(self.testdir, self.id()[12:]+".pdf"))
-    #         plt.clf()
