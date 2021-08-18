@@ -11,6 +11,7 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
+   psdns.equations
    psdns.tests
 
 Submodules

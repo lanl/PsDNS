@@ -8,18 +8,17 @@ from psdns import *
 from psdns.equations.navier_stokes import Smagorinsky
 
 
+grid = SpectralGrid(sdims=2**5-1, pdims=3*2**4)
 equations = Smagorinsky(Re=400)
 
 solver = RungeKutta(
     dt=0.01,
     tfinal=10.0,
     equations=equations,
-    ic=equations.taylor_green_vortex(
-        SpectralGrid(sdims=2**5-1, pdims=3*2**4)
-        ),
+    ic=equations.taylor_green_vortex(grid),
     diagnostics=[
-        StandardDiagnostics(tdump=0.1, outfile="tgv.dat"),
-        Spectra(tdump=1.0, outfile="spectra.dat"),
+        StandardDiagnostics(tdump=0.1, grid=grid, outfile="tgv.dat"),
+        Spectra(tdump=1.0, grid=grid, outfile="spectra.dat"),
         ],
     )
 solver.run()

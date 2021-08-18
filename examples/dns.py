@@ -1,7 +1,7 @@
 """DNS
 
 A simple psuedo-spectral DNS for the TGV, corresponding to the results
-of Brachet, et al. (1983). 
+of Brachet, et al. (1983).
 """
 from psdns import *
 from psdns.equations.navier_stokes import NavierStokes
@@ -18,8 +18,8 @@ solver = RungeKutta(
         ),
     diagnostics=[
         StandardDiagnostics(tdump=0.1, grid=grid, outfile="tgv.dat"),
-        #Spectra(tdump=1.0, outfile="spectra.dat"),
-        #FieldDump(tdump=1.0),
+        Spectra(tdump=1.0, grid=grid, outfile="spectra.dat"),
+        FieldDump(tdump=1.0, grid=grid),
         ],
     )
 solver.run()

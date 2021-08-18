@@ -17,10 +17,10 @@ sys.path.insert(0, '..')
 
 # -- Project information -----------------------------------------------------
 
-project = 'PsFDpy'
-copyright = '2020'
+project = 'PsDNS'
+copyright = '2020, 2021'
 author = 'Daniel M. Israel'
-version = '0.1'
+version = '1.0'
 
 
 # -- General configuration ---------------------------------------------------
@@ -50,6 +50,7 @@ language = 'en'
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
+numfig = True
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -64,7 +65,7 @@ html_theme_options = {
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = []
 
 
 # -- Extension configuration -------------------------------------------------
@@ -79,4 +80,29 @@ autodoc_default_options = {
 autodoc_inherit_docstrings = False
 
 # -- Options for intersphinx extension ---------------------------------------
-intersphinx_mapping = { 'python': ( 'https://docs.python.org/3', None ) }
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'matplotlib': ('https://matplotlib.org/stable/', None),
+    'numpy': ('https://numpy.org/doc/stable/', None),
+    }
+
+
+def cut_pep257_summary(app, what, name, obj, options, lines):
+    """Remove summary lines from PEP 257 formatted docstrings.
+
+    According to :pep:`257`, multi-line docstrings should consist of a
+    one line summary, followed by a blank line, followed by the more
+    detailed documentation.  This processor checks for docstrings that
+    appear to be in that format, and removes the summary line.
+
+    The rationale is that summary lines are typically useful as
+    headers when using the Python :func:`help` function, but are
+    redundant in the printed documentation where sections have titles
+    or headers.
+    """
+    if len(lines) > 2 and lines[1] == "":
+        del lines[:2]
+
+
+def setup(app):
+    app.connect('autodoc-process-docstring', cut_pep257_summary)
