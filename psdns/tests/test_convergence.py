@@ -14,12 +14,76 @@ A more detailed discussion of how to perform code verification is
 beyond the scope of this documentations.  For a good discussion, see
 [Oberkampf2010]_.
 """
+from mpi4py import MPI
+
 import numpy
 import scipy.optimize
 
 from psdns import *
 from psdns.equations.basic import Wave, Burgers
 
+
+class ExactWave(Wave):
+    A = 0.9
+    
+    def exact(self, grid, t):
+        r"""An exact solution to be used for testing purposes
+
+        Potentially any function can be used as a solution for the
+        wave equation.  For purposes of code verification, we wish to
+        use a solution which is periodic, mathematically simple,
+        :math:`C^\infty`, and has spectral content at all wave
+        numbers.  We chose
+
+        .. math::
+
+            f(x, y, z) = \frac{\sin(x)}{2+\cos(x)}
+        """
+        eta = grid.x - self.c[:, numpy.newaxis, numpy.newaxis, numpy.newaxis]*t
+        #u = 1/(1+self.A*numpy.sin(eta[0])*numpy.sin(eta[1])*numpy.sin(eta[2]))
+        u = numpy.cos(6*eta[0])
+        return PhysicalArray(grid, u)
+
+
+class ExactBurgers(Burgers):
+    A = 2
+    
+    def exact(self, grid, t):
+        r"""An exact solution for testing purposes
+
+        Utilizing the Cole-Hopf transformation, we pick a solution of the
+        Burgers equation such that
+
+        .. math::
+
+            u = - \frac{2 \nu}{\phi} \frac{\partial \phi}{\partial x}
+
+        where :math:`\phi` is a solution to the diffusion equation,
+
+        .. math::
+
+            \frac{\partial \phi}{\partial t}
+            = \nu \frac{\partial^2 \phi}{\partial x^2}
+
+        We could pick any solution to this equation, but we want one that
+        is simple and periodic, so we choose
+
+        .. math::
+
+            \phi = A + \exp - \nu t \cos x
+
+        or
+
+        .. math::
+
+            u = \frac{2 \nu}{A \exp \nu t + \cos x} \sin x
+        """
+        return PhysicalArray(
+            grid,
+            2*self.nu*numpy.sin(grid.x[0])
+            / (self.A*numpy.exp(self.nu*t)+numpy.cos(grid.x[0])),
+            )
+    
 
 class TestConvergence(tests.TestCase):
     """Test convergence for several equation sets
@@ -56,10 +120,12 @@ class TestConvergence(tests.TestCase):
             )
             solver.run()
             errs.append(
-                (solver.uhat.to_physical()
-                 - equations.exact(solver.uhat.grid, solver.time)).norm(),
+#                (solver.uhat.to_physical()
+#                 - equations.exact(solver.uhat.grid, solver.time)).norm(),
+                (solver.uhat
+                 - equations.exact(solver.uhat.grid, solver.time).to_spectral()).norm(),
                 )
-        if grids[0].comm.rank == 0:
+        if MPI.COMM_WORLD.rank == 0:
             ns = [grid.pdims[0] for grid in grids]
             fit = numpy.poly1d(
                 numpy.polyfit(numpy.log(ns), numpy.log(errs), 1)
@@ -99,9 +165,9 @@ class TestConvergence(tests.TestCase):
             Grid convergence of the wave equation
         """
         self.convergence_test(
-            equations=Wave(),
-            grids=[SpectralGrid([2**n, 8, 2]) for n in range(2, 8)],
-            solver_args={'dt': 0.001, 'tfinal': 1.0},
+            equations=ExactWave(c=[1, 1, 1]),
+            grids=[SpectralGrid(2**n) for n in range(2, 9)],
+            solver_args={'dt': 0.001, 'tfinal': 0.001},
             )
 
     def test_burgers(self):
@@ -118,7 +184,7 @@ class TestConvergence(tests.TestCase):
            Grid convergence for Burgers equation
         """
         self.convergence_test(
-            equations=Burgers(),
-            grids=[SpectralGrid([2**n, 8, 2]) for n in range(3, 7)],
+            equations=ExactBurgers(),
+            grids=[SpectralGrid(2**n) for n in range(3, 7)],
             solver_args={'dt': 0.001, 'tfinal': 1.0},
             )

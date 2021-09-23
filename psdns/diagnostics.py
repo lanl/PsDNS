@@ -13,6 +13,8 @@ import sys
 
 import numpy
 
+from psdns import *
+
 
 class Diagnostic(object):
     """Base class for diagnostics
@@ -160,19 +162,74 @@ class StandardDiagnostics(Diagnostic):
         The general tensor form for the skewness is
 
         .. math::
-            :label:
+            :label: def-skewness
 
             S =
             \left<
                 \frac{\partial u_i}{\partial x_k}
-                \frac{\partial u_i}{\partial x_l}
-                \frac{\partial u_l}{\partial x_k}
+                \frac{\partial u_j}{\partial x_k}
+                \frac{\partial u_i}{\partial x_j}
             \right>
         """
         gradu = uhat.grad().to_physical()
         S = [
-            (gradu[i, k]*gradu[i, l]*gradu[l, k]).to_spectral().get_mode([0, 0, 0])
-            for i in range(3) for k in range(3) for l in range(3)
+            (gradu[i, k]*gradu[j, k]*gradu[i, j]).average()
+            for i in range(3) for j in range(3) for k in range(3)
+            ]
+        if uhat.grid.comm.rank == 0:
+            return sum(S)
+
+    def S2(self, equations, uhat):
+        r"""Compute a generalized skewness
+
+        Typically :math:`S` is generalized to higher-order moments of
+        the first-derivative.  However, it can also be generalized in
+        terms of higher-order derivatives, as
+
+        .. math::
+           :label:
+
+           S_N =
+           \left<
+                \frac{\partial^N u_i}{\partial x_{j_1} \partial x_{j_2} \ldots \partial x_{j_N}}
+                \frac{\partial^N u_j}{\partial x_{j_1} \partial x_{j_2} \ldots \partial x_{j_N}}
+                \frac{\partial u_i}{\partial x_j}
+           \right>
+
+        Note that the regular skewness (eq. :eq:`def-skewness`) is
+        given by :math:`S = S_1`.
+        """
+        gradu = uhat.grad()
+        grad2u = gradu.grad().to_physical()
+        gradu = gradu.to_physical()
+        S = [
+            (grad2u[i, k, l]*grad2u[j, k, l]*gradu[i, j]).average()
+            for i in range(3) for j in range(3) for k in range(3)
+            for l in range(3)
+            ]
+        if uhat.grid.comm.rank == 0:
+            return sum([s.real for s in S])
+
+    def S3(self, equations, uhat):
+        gradu = uhat.grad()
+        grad3u = gradu.grad().grad().to_physical()
+        gradu = gradu.to_physical()
+        S = [
+            (grad3u[i, k, l, m]*grad3u[j, k, l, m]*gradu[i, j]).average()
+            for i in range(3) for j in range(3) for k in range(3)
+            for l in range(3) for m in range(3)
+            ]
+        if uhat.grid.comm.rank == 0:
+            return sum([s.real for s in S])
+
+    def S4(self, equations, uhat):
+        gradu = uhat.grad()
+        grad4u = gradu.grad().grad().grad().to_physical()
+        gradu = gradu.to_physical()
+        S = [
+            (grad4u[i, k, l, m, n]*grad4u[j, k, l, m, n]*gradu[i, j]).average()
+            for i in range(3) for j in range(3) for k in range(3)
+            for l in range(3) for m in range(3) for n in range(3)
             ]
         if uhat.grid.comm.rank == 0:
             return sum([s.real for s in S])
@@ -247,6 +304,73 @@ class StandardDiagnostics(Diagnostic):
         if uhat.grid.comm.rank == 0:
             return sum(G)
 
+    def H(self, equations, uhat):
+        r"""Compute the H
+
+        :math:`H` is a non-isotropic generalization of the :math:`h(r)`
+        function in the von Karmen-Howarth equation.  It is defined by
+
+        .. math::
+            :label:
+
+            H_n =
+            \left<
+                \frac{\partial^N u_i}{\partial x_{j_1} \partial x_{j_2} \ldots \partial x_{j_N}}
+                \frac{\partial^{N+1} u_k u_i}{\partial x_k \partial x_{j_1} \partial x_{j_2} \ldots \partial x_{j_N}}
+            \right>
+        """
+        uu = PhysicalArray(
+            uhat.grid,
+            numpy.einsum(
+                "i...,j...->ij...",
+                uhat.to_physical(),
+                uhat.to_physical()
+                )
+            ).to_spectral()
+        H = [
+            ((1j*uhat.grid.k[p]*uhat[j]).to_physical()
+             *(-uhat.grid.k[m]*uhat.grid.k[p]*uu[j,m]).to_physical()).average()
+            for j in range(3) for m in range(3) for p in range(3)
+            ]
+        if uhat.grid.comm.rank == 0:
+            return sum(H)
+
+    def H2(self, equations, uhat):
+        uu = PhysicalArray(
+            uhat.grid,
+            numpy.einsum(
+                "i...,j...->ij...",
+                uhat.to_physical(),
+                uhat.to_physical()
+                )
+            ).to_spectral()
+        H = [
+            ((-uhat.grid.k[p]*uhat.grid.k[q]*uhat[j]).to_physical()
+             *(-1j*uhat.grid.k[m]*uhat.grid.k[p]*uhat.grid.k[q]*uu[j,m]).to_physical()).average()
+            for j in range(3) for m in range(3) for p in range(3)
+            for q in range(3)
+            ]
+        if uhat.grid.comm.rank == 0:
+            return sum(H)
+        
+    def H3(self, equations, uhat):
+        uu = PhysicalArray(
+            uhat.grid,
+            numpy.einsum(
+                "i...,j...->ij...",
+                uhat.to_physical(),
+                uhat.to_physical()
+                )
+            ).to_spectral()
+        H = [
+            ((-1j*uhat.grid.k[p]*uhat.grid.k[q]*uhat.grid.k[r]*uhat[j]).to_physical()
+             *(uhat.grid.k[m]*uhat.grid.k[p]*uhat.grid.k[q]*uhat.grid.k[r]*uu[j,m]).to_physical()).average()
+            for j in range(3) for m in range(3) for p in range(3)
+            for q in range(3) for r in range(3)
+            ]
+        if uhat.grid.comm.rank == 0:
+            return sum(H)
+        
     def diagnostic(self, time, equations, uhat):
         """Write the diagnostics specified in :attr:`fields`"""
         row = dict(
@@ -260,33 +384,63 @@ class StandardDiagnostics(Diagnostic):
 
 
 class Spectra(Diagnostic):
-    """A diagnostic class for velocity spectra."""
-    def diagnostic(self, time, equations, uhat):
-        """Write the spectrum to a file"""
-        kmag = numpy.sqrt(numpy.sum(uhat.grid.k**2, axis=0))
-        kmax = numpy.amax(kmag)
-        nbins = int(max(kmag.shape)/2)
-        dk = kmax/nbins
-        wavenumbers = dk*numpy.arange(nbins+1)
-        spectrum = numpy.zeros([nbins+1, 3])
-        ispectrum = numpy.zeros([nbins+1], dtype=int)
+    r"""A diagnostic class for velocity spectra
 
-        for k, u in numpy.nditer([kmag, (uhat[:3]*uhat[:3].conjugate()).real()]):
-            spectrum[int(k/dk)] += u
+    The full velocity spectrum is a tensor function of a
+    three-dimensional wave-number,
+
+    .. math::
+
+        \Phi_{ij}(\boldsymbol{k}) 
+        = \hat{u}_i(\boldsymbol{k}) \hat{u}_j^*(\boldsymbol{k})
+
+    There are a number of different one-dimensional spectra that can
+    be obtained from this quantity, which can all be related to each
+    other in the simple case of isotropic turbulence.
+
+    This diagnostic computes the one-dimensional energy spectrum
+    function, defined as
+
+    .. math::
+
+        E(k)
+        = \iint_{|\boldsymbol{k}|=k} \Phi_{ii}(\boldsymbol{k}) dS
+    """
+    def integrate_shell(self, u, dk):
+        nbins = int(u.grid.kmax/dk)+1
+        spectrum = numpy.zeros([nbins])
+        ispectrum = numpy.zeros([nbins], dtype=int)
+        for k, v in numpy.nditer([u.grid.kmag, u]):
+            spectrum[int(k/dk)] += v
             ispectrum[int(k/dk)] += 1
-        spectrum *= 4*numpy.pi*(wavenumbers**2/ispectrum)[:, numpy.newaxis]
+        k = numpy.arange(nbins)*dk
+        spectrum = u.grid.comm.reduce(spectrum)
+        ispectrum = u.grid.comm.reduce(ispectrum)
+        if u.grid.comm.rank == 0:
+            spectrum *= 4*numpy.pi*k**2/ispectrum
+        return k, spectrum
+        
+    def diagnostic(self, time, equations, uhat):
+        """Write the spectrum to a file
 
-        for i, s in zip(wavenumbers, spectrum):
-            self.outfile.write("{} {}\n".format(i, sum(s)))
-        self.outfile.write("\n\n")
-        self.outfile.flush()
+        The integral cannot be calculated as a simple Riemann sum,
+        because the binning is not smooth enough.  Instead, this routine
+        caclulates the shell average, and then multiplies by the shell
+        surface area.
+        """
+        k, spectrum = self.integrate_shell(
+            (uhat[:3]*uhat[:3].conjugate()).real(),
+            1,
+            )
+        if uhat.grid.comm.rank == 0:
+            for i, s in zip(k, spectrum):
+                self.outfile.write("{} {}\n".format(i, s))
+            self.outfile.write("\n\n")
+            self.outfile.flush()
 
 
 class FieldDump(Diagnostic):
     """Full spectral field file dumps"""
     def diagnostic(self, time, equations, uhat):
-        """Write the solution fields in numpy format"""
-        numpy.save(
-            "data{:04g}".format(time),
-            uhat
-            )
+        """Write the solution fields in MPI format"""
+        uhat.checkpoint("data{:04g}".format(time))

@@ -99,7 +99,11 @@ class Integrator(object):
     def print_statistics(self):
         """Print the run statistics.
         """
-        print("Total compute time = ", self.total_walltime, file=sys.stderr)
+        if self.uhat.grid.comm.rank == 0:
+            print(
+                "Total compute time = ", self.total_walltime,
+                file=sys.stderr
+                )
 
 
 class Euler(Integrator):

@@ -146,6 +146,13 @@ class SpectralGrid(object):
             ])
         #: The local wavenumber magnitude squared.
         self.k2 = numpy.sum(self.k*self.k, axis=0)
+        #: The local wavenumber magnitude.
+        self.kmag = numpy.sqrt(self.k2)
+        #: The global maximum wavenumber magnitude.
+        self.kmax = numpy.sqrt(
+            numpy.amax(fftfreq0**2) + numpy.amax(fftfreq1**2)
+            + numpy.amax(rfftfreq**2)
+            )
         #: Meshes are domain decomposed into slabs in the first dimension
         #: in physical space, and the second dimension in spectral
         #: space.  A three-dimensional FFT is performed by first
@@ -401,6 +408,12 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             n /= numpy.product(self.grid.pdims)
         return n
 
+    def average(self):
+        """Return the average of the data."""
+        n = self.grid.comm.reduce(numpy.sum(self))
+        if self.grid.comm.rank == 0:
+            n /= numpy.product(self.grid.pdims)
+        return n
 
 class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     """Array of spectral space data

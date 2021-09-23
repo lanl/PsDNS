@@ -129,7 +129,9 @@ class NavierStokes(object):
         u[1] = B*numpy.sin(a*x[0])*numpy.cos(b*x[1])*numpy.sin(c*x[2])
         u[2] = C*numpy.sin(a*x[0])*numpy.sin(b*x[1])*numpy.cos(c*x[2])
 
-        return u.to_spectral()
+        s = u.to_spectral()
+        s._data = numpy.ascontiguousarray(s._data)
+        return s
 
 
 class SimplifiedSmagorinsky(NavierStokes):

@@ -160,7 +160,7 @@ class ScalingTest(tests.TestCase):
             if MPI.COMM_WORLD.rank < ncpu:
                 solver = self.integrator(ic=self.ic(grid))
                 solver.run()
-                total_walltimes.append(total_walltime)
+                total_walltimes.append(solver.total_walltime)
         return numpy.array(total_walltimes)
 
 
@@ -222,11 +222,10 @@ class TestStrongScaling(ScalingTest):
                         )
                     if ncpus.size == 0:
                         continue
-                    comm = MPI.COMM_WORLD.Split(MPI.COMM_WORLD.rank//ncpu, 0)
                     grids = (
                         SpectralGrid(
                             N,
-                            comm=comm,
+                            comm=MPI.COMM_WORLD.Split(MPI.COMM_WORLD.rank//ncpu, 0),
                             )
                         for ncpu in ncpus
                         )
