@@ -377,16 +377,24 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                self.grid.sdims[2]//2+1),
             dtype=complex
             )
+        # Note:
+        # 1. The length of count and disp correspond to the number of slabs we
+        #    are transferring between (which is the MPI rank).
+        # 2. The value of count is the size of the tensor (which is the same
+        #    for all slabs.
+        # 3. The value of disp is the offset of the portion of the array we are
+        #    transferring.  Since the MPI datatype is a subarray, the offset is
+        #    always zero, with the datatype itself containing the true offset.
+        # 4. The offset between each of the count items to be transferred,
+        #    which is *count*, is also already embedded in the subarray MPI
+        #    datatype.
         count = numpy.prod(self.shape[:-3], dtype=int)
-        t1a = t1.reshape(count, *t1.shape[-3:])
-        t2a = t2.reshape(count, *t2.shape[-3:])
-        counts = [1] * self.grid.comm.size
-        displs = [0] * self.grid.comm.size
-        for t1b, t2b in zip(t1a, t2a):
-            self.grid.comm.Alltoallw(
-                [t1b, counts, displs, self.grid.slice1],
-                [t2b, counts, displs, self.grid.slice2],
-                )
+        counts = [count] * self.grid.comm.size
+        disp = [0] * self.grid.comm.size
+        self.grid.comm.Alltoallw(
+            [t1, counts, disp, self.grid.slice1],
+            [t2, counts, disp, self.grid.slice2]
+            )
         t3 = numpy.fft.fft(
             t2,
             axis=-3,
@@ -414,6 +422,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         if self.grid.comm.rank == 0:
             n /= numpy.product(self.grid.pdims)
         return n
+
 
 class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     """Array of spectral space data
@@ -587,15 +596,12 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             dtype=complex
             )
         count = numpy.prod(self.shape[:-3], dtype=int)
-        t1a = t1.reshape(count, *t1.shape[-3:])
-        t2a = t2.reshape(count, *t2.shape[-3:])
-        counts = [1] * self.grid.comm.size
+        counts = [count] * self.grid.comm.size
         displs = [0] * self.grid.comm.size
-        for t1b, t2b in zip(t1a, t2a):
-            self.grid.comm.Alltoallw(
-                [t1b, counts, displs, self.grid.slice2],
-                [t2b, counts, displs, self.grid.slice1],
-                )
+        self.grid.comm.Alltoallw(
+            [t1, counts, displs, self.grid.slice2],
+            [t2, counts, displs, self.grid.slice1],
+            )
         t25 = numpy.zeros(
             self.shape[:-3]
             + (self.grid.local_physical_slice[0].stop
@@ -661,14 +667,14 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                         (self[..., 1:-1]*numpy.conjugate(self[..., 1:-1])).real,
                         axis=-1
                         )
-                    +(self[..., -1]*numpy.conjugate(self[..., -1])).real
+                    + (self[..., -1]*numpy.conjugate(self[..., -1])).real
                     )
                 )
         else:
             n = self.grid.comm.reduce(
                 numpy.sum(
                     (self[..., 0]*numpy.conjugate(self[..., 0])).real
-                    +2*numpy.sum(
+                    + 2*numpy.sum(
                         (self[..., 1:]*numpy.conjugate(self[..., 1:])).real,
                         axis=-1
                         )
