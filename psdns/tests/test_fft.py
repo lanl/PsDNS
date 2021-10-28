@@ -452,7 +452,7 @@ class TestMPI4PyFFT(tests.TestCase):
                     sdims,
                     padding=numpy.asarray(pdims)/numpy.asarray(sdims),
                     axes=(0, 1, 2),
-                    dtype=numpy.float,
+                    dtype=float,
                     grid=(-1,)
                     )
                 p = random_physical_array(
@@ -478,7 +478,7 @@ class TestMPI4PyFFT(tests.TestCase):
                     sdims,
                     padding=numpy.asarray(pdims)/numpy.asarray(sdims),
                     axes=(0, 1, 2),
-                    dtype=numpy.float,
+                    dtype=float,
                     grid=(-1,)
                     )
                 s = random_spectral_array(
