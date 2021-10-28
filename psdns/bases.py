@@ -528,7 +528,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         fh.Write_all(self._data)
         fh.Close()
         view.Free()
-
+        return self
+    
     def read_checkpoint(self, filename):
         """Read a checkpoint file
 
@@ -541,6 +542,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         fh.Read_all(self._data)
         fh.Close()
         view.Free()
+        return self
 
     def copy(self):
         """Return a copy of the array"""
