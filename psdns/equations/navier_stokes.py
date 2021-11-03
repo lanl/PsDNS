@@ -116,9 +116,6 @@ class NavierStokes(object):
 
             A a + B b + C c = 0
         """
-        assert isinstance(a, int), "Wavenumbers must be integers."
-        assert isinstance(b, int), "Wavenumbers must be integers."
-        assert isinstance(c, int), "Wavenumbers must be integers."
         assert A*a+B*b+C*c == 0, \
             "Initial condition does not satisfy continuity."
 

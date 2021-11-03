@@ -42,7 +42,8 @@ class SpectralGrid(object):
     is shared among all the data arrays.
     """
     def __init__(
-            self, sdims, pdims=None, aliasing_strategy='truncate',
+            self, sdims, pdims=None, box_size=2*numpy.pi,
+            aliasing_strategy='truncate',
             comm=MPI.COMM_WORLD
             ):
         r"""Return a new :class:`SpectralGrid` object.
@@ -87,6 +88,7 @@ class SpectralGrid(object):
         #: The global size of the mesh in physical space
         self.pdims = numpy.broadcast_to(numpy.atleast_1d(pdims), (3,)) \
             if pdims else self.sdims
+        box_size = numpy.broadcast_to(numpy.atleast_1d(box_size), (3,))
         if self.sdims[0] > self.pdims[0] and self.sdims[0] % 2 == 0:
             warnings.warn(
                 "Truncating to an even number of modes in x: "
@@ -122,21 +124,21 @@ class SpectralGrid(object):
         #: The slice of the global spectral mesh stored by this process
         self.local_spectral_slice = self.spectral_slices[self.comm.rank]
         #: A 3-tuple with the physical mesh spacing in each dimension
-        self.dx = 2*numpy.pi/self.pdims
+        self.dx = box_size/self.pdims
         #: The local physical space mesh
-        self.x = self.dx[:, numpy.newaxis, numpy.newaxis, numpy.newaxis] \
+        self.x = self.dx[:,numpy.newaxis, numpy.newaxis, numpy.newaxis] \
             * numpy.mgrid[self.local_physical_slice]
         k = numpy.mgrid[self.local_spectral_slice]
         # Note, use sample spacing/2pi to get radial frequencies, rather
         # than circular frequencies.
-        fftfreq0 = numpy.fft.fftfreq(self.pdims[0], 1/self.pdims[0])[
+        fftfreq0 = numpy.fft.fftfreq(self.pdims[0], self.dx[0]/(2*numpy.pi))[
             [*range(0, (self.sdims[0]+1)//2), *range(-(self.sdims[0]//2), 0)]
             ]
-        fftfreq1 = numpy.fft.fftfreq(self.pdims[1], 1/self.pdims[1])[
+        fftfreq1 = numpy.fft.fftfreq(self.pdims[1], self.dx[1]/(2*numpy.pi))[
             [*range(0, (self.sdims[1]+1)//2), *range(-(self.sdims[1]//2), 0)]
             ]
         rfftfreq = numpy.fft.rfftfreq(
-            self.pdims[2], 1/self.pdims[2]
+            self.pdims[2],self.dx[2]/(2*numpy.pi)
             )[:self.sdims[2]//2+1]
         #: The local spectral space mesh (wavenumbers)
         self.k = numpy.array([
