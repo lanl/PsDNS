@@ -731,6 +731,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         if (mode[1] >= self.grid.local_spectral_slice[1].start and
                 mode[1] < self.grid.local_spectral_slice[1].stop):
             val = self._data[
+                ...,
                 mode[0],
                 mode[1]-self.grid.local_spectral_slice[1].start,
                 mode[2]
