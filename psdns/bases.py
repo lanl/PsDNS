@@ -567,6 +567,18 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """Return a new array containing the real part of the data"""
         return SpectralArray(self.grid, self._data.real)
 
+    def transpose(self, *indicies):
+        """Returns a view of the array with axes transposed
+
+        This method returns a new view of the array with the axes
+        transposed.  For a rank-2 tensor, ``p.transpose()`` returns the
+        standard matrix transpose.  For higher rank tensors, the
+        *indicies* behave the same as for the
+        :meth:`numpy.ndarray.transpose` method.  Note that transposing
+        any of the last three dimensions does not make sense.
+        """
+        return SpectralArray(self.grid, self._data.transpose(*indicies))
+
     def to_physical(self):
         """Transform to physical space.
 
