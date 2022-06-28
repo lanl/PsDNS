@@ -175,7 +175,7 @@ class SpectralGrid(object):
                 [self.local_physical_slice[0].stop
                  - self.local_physical_slice[0].start,
                  self.sdims[1],
-                 self.sdims[2]//2+1
+                 self.pdims[2]//2+1
                 ],
                 [self.local_physical_slice[0].stop
                  - self.local_physical_slice[0].start,
@@ -370,7 +370,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         elif self.grid._aliasing_strategy == 'truncate':
             if M[1] > N[1] and N[1] % 2 == 0:
                 t1[..., :, -(N[1]//2), :] = 0
-        t1 = numpy.ascontiguousarray(t1[..., i1, :N[2]//2+1])
+        t1 = numpy.ascontiguousarray(t1[..., i1, :])
         t2 = numpy.zeros(
             t1.shape[:-3]
             + (self.grid.pdims[0],
@@ -608,7 +608,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             + (self.grid.local_physical_slice[0].stop
                - self.grid.local_physical_slice[0].start,
                self.grid.sdims[1],
-               self.grid.sdims[2]//2+1),
+               self.grid.pdims[2]//2+1),
             dtype=complex
             )
         count = numpy.prod(self.shape[:-3], dtype=int)
@@ -626,7 +626,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                self.grid.pdims[2]//2+1),
             dtype=complex
             )
-        t25[..., i1, :self.grid.sdims[2]//2+1] = t2
+        t25[..., i1, :] = t2
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[1] > N[1] and N[1] % 2 == 0:
                 t25[..., :, -(N[1]//2), :] *= 0.5
