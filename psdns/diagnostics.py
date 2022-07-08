@@ -11,7 +11,8 @@ library diagnostics to use.
 import csv
 import sys
 
-import numpy
+import numpy as np
+import cupy as numpy
 
 from psdns import *
 
@@ -133,7 +134,8 @@ class StandardDiagnostics(Diagnostic):
               \frac{\partial u_i}{\partial x_j}
             \right>
         """
-        enstrophy = [(1j*uhat.grid.k[i]*uhat[j]).norm()
+         
+        enstrophy =  [ (uhat[j]*1j*uhat.grid.k[i]).norm()
                      for i in range(3) for j in range(3)]
         if uhat.grid.comm.rank == 0:
             return 2*equations.nu*sum(enstrophy)
@@ -410,9 +412,11 @@ class Spectra(Diagnostic):
         nbins = int(u.grid.kmax/dk)+1
         spectrum = numpy.zeros([nbins])
         ispectrum = numpy.zeros([nbins], dtype=int)
-        for k, v in numpy.nditer([u.grid.kmag, u]):
-            spectrum[int(k/dk)] += v
-            ispectrum[int(k/dk)] += 1
+        uu1 = numpy.asnumpy(u.grid.kmag)
+        uu2 = numpy.asnumpy(u._data)
+        for k,v in np.nditer([uu1, uu2]):
+            spectrum[int(numpy.asarray(k)/dk)] += numpy.asarray(v)
+            ispectrum[int(numpy.asarray(k)/dk)] += 1
         k = numpy.arange(nbins)*dk
         spectrum = u.grid.comm.reduce(spectrum)
         ispectrum = u.grid.comm.reduce(ispectrum)
@@ -443,4 +447,4 @@ class FieldDump(Diagnostic):
     """Full spectral field file dumps"""
     def diagnostic(self, time, equations, uhat):
         """Write the solution fields in MPI format"""
-        uhat.checkpoint("data{:04g}".format(time))
+       # uhat.checkpoint("data{t:04g}".format(t = time))

@@ -24,7 +24,7 @@ then the dimensionality of the solution vector.
 import sys
 from time import time as walltime
 
-import numpy
+import cupy as  numpy
 
 
 class Integrator(object):

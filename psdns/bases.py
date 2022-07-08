@@ -26,8 +26,8 @@ referred to as *global*, whereas information about a specific rank is
 """
 from functools import cached_property
 import warnings
-
-import numpy
+import numpy as np
+import cupy as numpy
 
 from mpi4py import MPI
 
@@ -126,16 +126,18 @@ class SpectralGrid(object):
         #: A 3-tuple with the physical mesh spacing in each dimension
         self.dx = box_size/self.pdims
         #: The local physical space mesh
-        self.x = self.dx[:,numpy.newaxis, numpy.newaxis, numpy.newaxis] \
-            * numpy.mgrid[self.local_physical_slice]
+        self.x = self.dx[:,None,None,None]*numpy.mgrid[self.local_physical_slice]
+        
+        #self.x = self.dx[:,np.newaxis, np.newaxis, np.newaxis] \
+        #    *numpy.mgrid[self.local_physical_slice]
         k = numpy.mgrid[self.local_spectral_slice]
         # Note, use sample spacing/2pi to get radial frequencies, rather
         # than circular frequencies.
         fftfreq0 = numpy.fft.fftfreq(self.pdims[0], self.dx[0]/(2*numpy.pi))[
-            [*range(0, (self.sdims[0]+1)//2), *range(-(self.sdims[0]//2), 0)]
+            [*range(0, (int(self.sdims[0]) + 1)//2), *range(-int(self.sdims[0]//2), 0)]
             ]
         fftfreq1 = numpy.fft.fftfreq(self.pdims[1], self.dx[1]/(2*numpy.pi))[
-            [*range(0, (self.sdims[1]+1)//2), *range(-(self.sdims[1]//2), 0)]
+            [*range(0, (int(self.sdims[1])+1)//2), *range(-int(self.sdims[1]//2), 0)]
             ]
         rfftfreq = numpy.fft.rfftfreq(
             self.pdims[2],self.dx[2]/(2*numpy.pi)
@@ -172,17 +174,17 @@ class SpectralGrid(object):
         #: current rank).
         self.slice1 = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
-                [self.local_physical_slice[0].stop
-                 - self.local_physical_slice[0].start,
-                 self.sdims[1],
-                 self.sdims[2]//2+1
+                [int(self.local_physical_slice[0].stop)
+                 - int(self.local_physical_slice[0].start),
+                 int(self.sdims[1]),
+                 int(self.sdims[2])//2+1
                 ],
-                [self.local_physical_slice[0].stop
-                 - self.local_physical_slice[0].start,
-                 s[1].stop - s[1].start,
-                 self.sdims[2]//2+1
+                [int(self.local_physical_slice[0].stop)
+                 - int(self.local_physical_slice[0].start),
+                 int(s[1].stop) - int(s[1].start),
+                 int(self.sdims[2])//2+1
                 ],
-                [0, s[1].start, 0],
+                [0, int(s[1].start), 0],
                 ).Commit()
             for s in self.spectral_slices
             ]
@@ -190,17 +192,17 @@ class SpectralGrid(object):
         #: swap (see :attr:`slice1`).
         self.slice2 = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
-                [self.pdims[0],
-                 self.local_spectral_slice[1].stop
-                 - self.local_spectral_slice[1].start,
-                 self.sdims[2]//2+1
+                [int(self.pdims[0]),
+                 int(self.local_spectral_slice[1].stop)
+                 - int(self.local_spectral_slice[1].start),
+                 int(self.sdims[2])//2+1
                 ],
-                [p[0].stop - p[0].start,
-                 self.local_spectral_slice[1].stop
-                 - self.local_spectral_slice[1].start,
-                 self.sdims[2]//2+1
+                [int(p[0].stop) - int(p[0].start),
+                 int(self.local_spectral_slice[1].stop)
+                 - int(self.local_spectral_slice[1].start),
+                 int(self.sdims[2])//2+1
                 ],
-                [p[0].start, 0, 0],
+                [int(p[0].start), 0, 0],
                 ).Commit()
             for p in self.physical_slices
             ]
@@ -226,7 +228,7 @@ class SpectralGrid(object):
                 / numpy.where(self.k2 == 0, 1, self.k2))
 
 
-class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
+class PhysicalArray(np.lib.mixins.NDArrayOperatorsMixin):
     """Array of physical space data
 
     A :class:`PhysicalArray` is a specialized distributed array class
@@ -358,8 +360,8 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         # Index array which picks out retained modes in a complex transform
         N = self.grid.sdims
         M = self.grid.pdims
-        i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
-        i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
+        i0 = numpy.array([*range(0, int(N[0]+1)//2), *range(-int(N[0]//2), 0)])
+        i1 = numpy.array([*range(0, int(N[1]+1)//2), *range(-int(N[1]//2), 0)])
         # It would be more efficient to design MPI slices that fit
         # the non-contiguous array returned by the slicing here.
         t1 = numpy.fft.rfft2(self._data)
@@ -369,14 +371,14 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                   t1[..., :, N[1]//2, :] + t1[..., :, -(N[1]//2), :]
         elif self.grid._aliasing_strategy == 'truncate':
             if M[1] > N[1] and N[1] % 2 == 0:
-                t1[..., :, -(N[1]//2), :] = 0
-        t1 = numpy.ascontiguousarray(t1[..., i1, :N[2]//2+1])
-        t2 = numpy.zeros(
+                t1[..., :, -(N[1]//2), :] = 0        
+        t1 = numpy.ascontiguousarray(t1[..., i1, :int(N[2])//2+1])
+        t2 = np.zeros(
             t1.shape[:-3]
-            + (self.grid.pdims[0],
-               self.grid.local_spectral_slice[1].stop
-               - self.grid.local_spectral_slice[1].start,
-               self.grid.sdims[2]//2+1),
+            + (int(self.grid.pdims[0]),
+               int(self.grid.local_spectral_slice[1].stop)
+               - int(self.grid.local_spectral_slice[1].start),
+               int(self.grid.sdims[2])//2+1),
             dtype=complex
             )
         # Note:
@@ -390,15 +392,15 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         # 4. The offset between each of the count items to be transferred,
         #    which is *count*, is also already embedded in the subarray MPI
         #    datatype.
-        count = numpy.prod(self.shape[:-3], dtype=int)
+        count = numpy.prod(numpy.asarray(self.shape[:-3]), dtype=int)
         counts = [count] * self.grid.comm.size
         disp = [0] * self.grid.comm.size
         self.grid.comm.Alltoallw(
-            [t1, counts, disp, self.grid.slice1],
-            [t2, counts, disp, self.grid.slice2]
+            [numpy.asnumpy(t1),counts,disp,self.grid.slice1],
+            [t2, counts, disp,self.grid.slice2]
             )
         t3 = numpy.fft.fft(
-            t2,
+            numpy.asarray(t2),
             axis=-3,
             )
         if self.grid._aliasing_strategy == 'mpi4py':
@@ -426,7 +428,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         return n
 
 
-class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
+class SpectralArray(np.lib.mixins.NDArrayOperatorsMixin):
     """Array of spectral space data
 
     A :class:`SpectralArray` is a specialized distributed array class
@@ -440,7 +442,20 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         the data shape will be be determined by the local spectral
         dimensions, and the default data type is complex.
 
-        So, for example, the normal way to create a
+        So, for examFile "/vast/home/ananyo/psdns/examples/psdns/integrators.py", line 87, in run
+    self.diagnostics()
+  File "/vast/home/ananyo/psdns/examples/psdns/integrators.py", line 79, in diagnostics
+    diagnostic(self.time, self.equations, self.uhat)
+  File "/vast/home/ananyo/psdns/examples/psdns/diagnostics.py", line 65, in __call__
+    self.diagnostic(time, equations, uhat)
+  File "/vast/home/ananyo/psdns/examples/psdns/diagnostics.py", line 378, in diagnostic
+    **{field: getattr(self, field)(equations, uhat)
+  File "/vast/home/ananyo/psdns/examples/psdns/diagnostics.py", line 378, in <dictcomp>
+    **{field: getattr(self, field)(equations, uhat)
+  File "/vast/home/ananyo/psdns/examples/psdns/diagnostics.py", line 136, in dissipation
+    enstrophy = [(1j*uhat.grid.k[i]*uhat[j]).norm()
+  File "/vast/home/ananyo/psdns/examples/psdns/diagnostics.py", line 136, in <listcomp>
+    enstrophy = [(1j*uhat.grid.k[i]*uhat[j]).norm()ple, the normal way to create a
         :class:`SpectralArray` would be::
 
             s = SpectralArray(SpectralGrid(8), (3,))
@@ -536,7 +551,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             self.grid.comm, filename, MPI.MODE_WRONLY | MPI.MODE_CREATE
             )
         fh.Set_view(0, filetype=view)
-        fh.Write_all(self._data)
+        fh.Write_all(tuple(numpy.asnumpy(self._data)))
         fh.Close()
         view.Free()
         return self
@@ -587,17 +602,17 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """
         N = self.grid.sdims
         M = self.grid.pdims
-        i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
-        i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
+        i0 = numpy.array([*range(0, int(N[0]+1)//2), *range(-int(N[0]//2), 0)])
+        i1 = numpy.array([*range(0, int(N[1]+1)//2), *range(-int(N[1]//2), 0)])
         s = numpy.zeros(
             self.shape[:-3]
-            + (self.grid.pdims[0],
-               self.grid.local_spectral_slice[1].stop
-               - self.grid.local_spectral_slice[1].start,
-               self.grid.sdims[2]//2+1),
+            + (int(self.grid.pdims[0]),
+               int(self.grid.local_spectral_slice[1].stop)
+               - int(self.grid.local_spectral_slice[1].start),
+               int(self.grid.sdims[2]//2+1)),
             dtype=complex
             )
-        s[..., i0, :, :] = self
+        s[..., i0, :, :] = self._data
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[0] > N[0] and N[0] % 2 == 0:
                 s[..., -(N[0]//2), :, :] *= 0.5
@@ -605,34 +620,34 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
         t2 = numpy.zeros(
             self.shape[:-3]
-            + (self.grid.local_physical_slice[0].stop
-               - self.grid.local_physical_slice[0].start,
-               self.grid.sdims[1],
-               self.grid.sdims[2]//2+1),
+            + (int(self.grid.local_physical_slice[0].stop)
+               - int(self.grid.local_physical_slice[0].start),
+               int(self.grid.sdims[1]),
+               int(self.grid.sdims[2]//2+1)),
             dtype=complex
             )
-        count = numpy.prod(self.shape[:-3], dtype=int)
+        count = numpy.prod(numpy.asarray(self.shape[:-3]), dtype=int)
         counts = [count] * self.grid.comm.size
         displs = [0] * self.grid.comm.size
         self.grid.comm.Alltoallw(
-            [t1, counts, displs, self.grid.slice2],
-            [t2, counts, displs, self.grid.slice1],
+            [numpy.asnumpy(t1), counts, displs, numpy.asnumpy(self.grid.slice2)],
+            [numpy.asnumpy(t2), counts, displs, numpy.asnumpy(self.grid.slice1)],
             )
         t25 = numpy.zeros(
             self.shape[:-3]
-            + (self.grid.local_physical_slice[0].stop
-               - self.grid.local_physical_slice[0].start,
-               self.grid.pdims[1],
-               self.grid.pdims[2]//2+1),
+            + (int(self.grid.local_physical_slice[0].stop)
+               - int(self.grid.local_physical_slice[0].start),
+               int(self.grid.pdims[1]),
+               int(self.grid.pdims[2]//2+1)),
             dtype=complex
             )
-        t25[..., i1, :self.grid.sdims[2]//2+1] = t2
+        t25[..., i1, :int(self.grid.sdims[2]//2+1)] = t2
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[1] > N[1] and N[1] % 2 == 0:
                 t25[..., :, -(N[1]//2), :] *= 0.5
                 t25[..., :, N[1]//2, :] = t25[..., :, -(N[1]//2), :]
         t3 = numpy.fft.irfft2(
-            t25,
+            numpy.asarray(t25),
             s=self.grid.x.shape[2:],
             axes=(-2, -1)
             )*numpy.prod(self.grid.pdims)
@@ -668,7 +683,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """
         return SpectralArray(
             self.grid,
-            1j*numpy.cross(self.grid.k, self, axis=0),
+            1j*numpy.cross(self.grid.k, self._data, axis=0),
             )
 
     def norm(self):

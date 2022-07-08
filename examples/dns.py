@@ -6,7 +6,7 @@ of Brachet, et al. (1983).
 from psdns import *
 from psdns.equations.navier_stokes import NavierStokes
 
-grid = SpectralGrid(sdims=2**6-1, pdims=3*2**5)
+grid = SpectralGrid(sdims=2**3-1, pdims=3*2**2)
 equations = NavierStokes(Re=400)
 
 solver = RungeKutta(

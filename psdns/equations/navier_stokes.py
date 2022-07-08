@@ -1,7 +1,6 @@
 import warnings
-
-import numpy
-
+import numpy 
+import cupy as cp
 from psdns import *
 
 
@@ -88,10 +87,10 @@ class NavierStokes(object):
         """
         u = uhat.to_physical()
         vorticity = uhat.curl().to_physical()
-        nl = numpy.cross(u, vorticity, axis=0)
+        nl = numpy.cross(u._data, vorticity._data, axis=0)
         nl = PhysicalArray(uhat.grid, nl).to_spectral()
-        du = numpy.einsum("ij...,j...->i...", uhat.grid.P, nl)
-        du -= self.nu*uhat.grid.k2*uhat
+        du = numpy.einsum("ij...,j...->i...", uhat.grid.P, nl._data)
+        du -= self.nu*uhat.grid.k2*uhat._data
         return du
 
     def taylor_green_vortex(self, grid, A=1, B=-1, C=0, a=1, b=1, c=1):
