@@ -412,11 +412,17 @@ class Spectra(Diagnostic):
         nbins = int(u.grid.kmax/dk)+1
         spectrum = numpy.zeros([nbins])
         ispectrum = numpy.zeros([nbins], dtype=int)
-        uu1 = numpy.asnumpy(u.grid.kmag)
-        uu2 = numpy.asnumpy(u._data)
-        for k,v in np.nditer([uu1, uu2]):
-            spectrum[int(numpy.asarray(k)/dk)] += numpy.asarray(v)
-            ispectrum[int(numpy.asarray(k)/dk)] += 1
+       # uu1 = numpy.asnumpy(u.grid.kmag)
+       # uu2 = numpy.asnumpy(u._data)
+        shape1 = numpy.shape(u.grid.kmag)
+       # for k,v in numpy._iter_([u.grid.kmag, u._data]):
+        for inx1 in range(shape1[0]):
+            for inx2 in range(shape1[1]):
+                for inx3 in range(shape1[2]):
+                  k = u.grid.kmag[inx1,inx2,inx3]
+                  v = u._data[:,inx1,inx2,inx3]
+                  spectrum[int(k)/dk] = sum(v)
+                  ispectrum[int(k)/dk] += 1
         k = numpy.arange(nbins)*dk
         spectrum = u.grid.comm.reduce(spectrum)
         ispectrum = u.grid.comm.reduce(ispectrum)

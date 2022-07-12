@@ -14,7 +14,7 @@ from functools import partial
 from math import log
 import unittest
 
-import numpy
+import  numpy
 import scipy.optimize
 
 from mpi4py import MPI
