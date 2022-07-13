@@ -114,15 +114,51 @@ class SpectralGrid(object):
         #: A list, each element of which is a 3-tuple of
         #: Python :class:`slice` objects describing the slice of the
         #: global spectral mesh stored on the n-th MPI rank
+        
+        #self.spectral_slices = [
+        #    (slice(0, self.sdims[0]),
+        #     slice(i*self.sdims[1]//self.comm.size,
+        #           (i+1)*self.sdims[1]//self.comm.size),
+        #     slice(0, self.sdims[2]//2+1))
+        #    for i in range(self.comm.size)
+        #    ]
+        
+        # modified so that the lengths of the slices are in the same order as the dealias_slices
+        # currently only for odd sdims and even comm.size 
+        q, r = divmod(self.sdims[1], self.comm.size)
         self.spectral_slices = [
             (slice(0, self.sdims[0]),
-             slice(i*self.sdims[1]//self.comm.size,
-                   (i+1)*self.sdims[1]//self.comm.size),
+             slice(i*q + min(i,r), (i+1)*q + min(i+1,r)),
              slice(0, self.sdims[2]//2+1))
-            for i in range(self.comm.size)
-            ]
+            for i in range(self.comm.size) 
+            ] 
+
         #: The slice of the global spectral mesh stored by this process
         self.local_spectral_slice = self.spectral_slices[self.comm.rank]
+        #: A list, each element of which is a 3-tuple of
+        #: Python :class:`slice` objects describing the slice of the
+        #: global spectral mesh stored on the n-th MPI rank
+        # assigns half the ranks to the portion of modes on one side
+        # the aliased nodes and the other half to the other side
+        # assumes even number of ranks  
+        # assumes sdims is odd (more modes on the left)
+        # q=quotient, r=remainder 
+        q1, r1 = divmod(self.sdims[1]//2 + 1, self.comm.size//2)
+        self.spectral_dealias_slices_1 = [
+            (slice(0, self.sdims[0]),
+             slice(i*q1 + min(i,r1), (i+1)*q1 + min(i+1,r1)),
+             slice(0, self.sdims[2]//2+1))
+            for i in range(self.comm.size//2) 
+            ]
+        q2, r2 = divmod(self.sdims[1]//2, self.comm.size//2) 
+        self.spectral_dealias_slices_2 = [
+            (slice(0, self.sdims[0]),
+             slice(i*q2 + min(i,r2) + self.sdims[1]//2 + 1 + self.pdims[1] - self.sdims[1],
+               (i+1)*q2 + min(i+1,r2) + self.sdims[1]//2 + 1 + self.pdims[1] - self.sdims[1]),
+             slice(0, self.sdims[2]//2+1))
+            for i in range(self.comm.size//2) 
+            ]
+        self.spectral_dealias_slices = self.spectral_dealias_slices_1 + self.spectral_dealias_slices_2
         #: A 3-tuple with the physical mesh spacing in each dimension
         self.dx = box_size/self.pdims
         #: The local physical space mesh
@@ -174,7 +210,7 @@ class SpectralGrid(object):
             MPI.DOUBLE_COMPLEX.Create_subarray(
                 [self.local_physical_slice[0].stop
                  - self.local_physical_slice[0].start,
-                 self.sdims[1],
+                 self.pdims[1],
                  self.pdims[2]//2+1
                 ],
                 [self.local_physical_slice[0].stop
@@ -184,7 +220,7 @@ class SpectralGrid(object):
                 ],
                 [0, s[1].start, 0],
                 ).Commit()
-            for s in self.spectral_slices
+            for s in self.spectral_dealias_slices
             ]
         #: A list of receiving data types for the slab decomposition
         #: swap (see :attr:`slice1`).
