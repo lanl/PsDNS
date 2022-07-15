@@ -384,7 +384,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         the range specified by *min* and *max*.
         """
         return PhysicalArray(self.grid, self._data.clip(min, max))
-
+ 
     def to_spectral(self):
         """Transform to spectral space.
 
@@ -406,7 +406,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         elif self.grid._aliasing_strategy == 'truncate':
             if M[1] > N[1] and N[1] % 2 == 0:
                 t1[..., :, -(N[1]//2), :] = 0
-        t1 = numpy.ascontiguousarray(t1[..., i1, :])
+        t1 = numpy.ascontiguousarray(t1)
         t2 = numpy.zeros(
             t1.shape[:-3]
             + (self.grid.pdims[0],
@@ -639,11 +639,20 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                 s[..., -(N[0]//2), :, :] *= 0.5
                 s[..., N[0]//2, :, :] = s[..., -(N[0]//2), :, :]
         t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
+#        t2 = numpy.zeros(
+#            self.shape[:-3]
+#            + (self.grid.local_physical_slice[0].stop
+#               - self.grid.local_physical_slice[0].start,
+#               self.grid.sdims[1],
+#               self.grid.pdims[2]//2+1),
+#            dtype=complex
+#            )
+        # Formally known as t25:
         t2 = numpy.zeros(
             self.shape[:-3]
             + (self.grid.local_physical_slice[0].stop
                - self.grid.local_physical_slice[0].start,
-               self.grid.sdims[1],
+               self.grid.pdims[1],
                self.grid.pdims[2]//2+1),
             dtype=complex
             )
@@ -654,21 +663,13 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             [t1, counts, displs, self.grid.slice2],
             [t2, counts, displs, self.grid.slice1],
             )
-        t25 = numpy.zeros(
-            self.shape[:-3]
-            + (self.grid.local_physical_slice[0].stop
-               - self.grid.local_physical_slice[0].start,
-               self.grid.pdims[1],
-               self.grid.pdims[2]//2+1),
-            dtype=complex
-            )
-        t25[..., i1, :] = t2
+#        t25[..., i1, :] = t2
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[1] > N[1] and N[1] % 2 == 0:
-                t25[..., :, -(N[1]//2), :] *= 0.5
-                t25[..., :, N[1]//2, :] = t25[..., :, -(N[1]//2), :]
+                t2[..., :, -(N[1]//2), :] *= 0.5
+                t2[..., :, N[1]//2, :] = t2[..., :, -(N[1]//2), :]
         t3 = numpy.fft.irfft2(
-            t25,
+            t2,
             s=self.grid.x.shape[2:],
             axes=(-2, -1)
             )*numpy.prod(self.grid.pdims)
