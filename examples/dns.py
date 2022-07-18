@@ -8,8 +8,8 @@ import cProfile, pstats, io
 from psdns.equations.navier_stokes import NavierStokes
 with cProfile.Profile() as pr:
   idx = 7
-  grid = SpectralGrid(sdims=2)
-  equations = NavierStokes(Re=400)
+  grid = SpectralGrid(sdims=128)
+  equations = NavierStokes(Re=100)
 
   solver = RungeKutta(
     dt=0.01,
