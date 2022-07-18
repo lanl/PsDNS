@@ -125,13 +125,51 @@ class SpectralGrid(object):
         
         # modified so that the lengths of the slices are in the same order as the dealias_slices
         # currently only for odd sdims and even comm.size 
-        q, r = divmod(self.sdims[1], self.comm.size)
-        self.spectral_slices = [
-            (slice(0, self.sdims[0]),
-             slice(i*q + min(i,r), (i+1)*q + min(i+1,r)),
-             slice(0, self.sdims[2]//2+1))
-            for i in range(self.comm.size) 
-            ] 
+        #q, r = divmod(self.sdims[1], self.comm.size)
+        #self.spectral_slices = [
+        #    (slice(0, self.sdims[0]),
+        #     slice(i*q + min(i,r), (i+1)*q + min(i+1,r)),
+        #     slice(0, self.sdims[2]//2+1))
+        #    for i in range(self.comm.size) 
+        #    ] 
+
+        self.spectral_slices = []
+        self.spectral_dealias_slices = []
+        # Divide sdims into first half and second half
+        s1 = self.sdims[1]//2 + 1
+        s2 = self.sdims[1]//2
+        if self.sdims[1] % 2 == 0:
+            s2 = s2 - 1
+        # Calculate size of aliased region 
+        aliased_size = self.pdims[1] - self.sdims[1]
+        # Populate slice lists 
+        for i in range(self.comm.size):
+            if i < self.comm.size//2:
+                self.spectral_slices.append(
+                    [slice(0, self.sdims[0]),
+                     slice(i*s1//(self.comm.size//2), (i+1)*s1//(self.comm.size//2)),
+                     slice(0, self.sdims[2]//2 + 1)]
+                    )
+                self.spectral_dealias_slices.append(
+                    [slice(0, self.sdims[0]),
+                     slice(i*s1//(self.comm.size//2), (i+1)*s1//(self.comm.size//2)),
+                     slice(0, self.sdims[2]//2 + 1)]
+                    )
+            else:
+                self.spectral_slices.append(
+                    [slice(0, self.sdims[0]),
+                     slice(i*s2//(self.comm.size//2) + 2, 
+                           (i+1)*s2//(self.comm.size//2) + 2),
+                     slice(0, self.sdims[2]//2 + 1)]
+                    )
+                self.spectral_dealias_slices.append(
+                    [slice(0, self.sdims[0]),
+                     slice(i*s2//(self.comm.size//2) + 2 + aliased_size, 
+                          (i+1)*s2//(self.comm.size//2) + 2 + aliased_size),
+                     slice(0, self.sdims[2]//2 + 1)]
+                    )
+
+
 
         #: The slice of the global spectral mesh stored by this process
         self.local_spectral_slice = self.spectral_slices[self.comm.rank]
@@ -143,22 +181,22 @@ class SpectralGrid(object):
         # assumes even number of ranks  
         # assumes sdims is odd (more modes on the left)
         # q=quotient, r=remainder 
-        q1, r1 = divmod(self.sdims[1]//2 + 1, self.comm.size//2)
-        self.spectral_dealias_slices_1 = [
-            (slice(0, self.sdims[0]),
-             slice(i*q1 + min(i,r1), (i+1)*q1 + min(i+1,r1)),
-             slice(0, self.sdims[2]//2+1))
-            for i in range(self.comm.size//2) 
-            ]
-        q2, r2 = divmod(self.sdims[1]//2, self.comm.size//2) 
-        self.spectral_dealias_slices_2 = [
-            (slice(0, self.sdims[0]),
-             slice(i*q2 + min(i,r2) + self.sdims[1]//2 + 1 + self.pdims[1] - self.sdims[1],
-               (i+1)*q2 + min(i+1,r2) + self.sdims[1]//2 + 1 + self.pdims[1] - self.sdims[1]),
-             slice(0, self.sdims[2]//2+1))
-            for i in range(self.comm.size//2) 
-            ]
-        self.spectral_dealias_slices = self.spectral_dealias_slices_1 + self.spectral_dealias_slices_2
+        #q1, r1 = divmod(self.sdims[1]//2 + 1, self.comm.size//2)
+        #self.spectral_dealias_slices_1 = [
+        #    (slice(0, self.sdims[0]),
+        #     slice(i*q1 + min(i,r1), (i+1)*q1 + min(i+1,r1)),
+        #     slice(0, self.sdims[2]//2+1))
+        #    for i in range(self.comm.size//2) 
+        #    ]
+        #q2, r2 = divmod(self.sdims[1]//2, self.comm.size//2) 
+        #self.spectral_dealias_slices_2 = [
+        #    (slice(0, self.sdims[0]),
+        #     slice(i*q2 + min(i,r2) + self.sdims[1]//2 + 1 + self.pdims[1] - self.sdims[1],
+        #       (i+1)*q2 + min(i+1,r2) + self.sdims[1]//2 + self.pdims[1] - self.sdims[1]),
+        #     slice(0, self.sdims[2]//2+1))
+        #    for i in range(self.comm.size//2) 
+        #    ]
+        #self.spectral_dealias_slices = self.spectral_dealias_slices_1 + self.spectral_dealias_slices_2
         #: A 3-tuple with the physical mesh spacing in each dimension
         self.dx = box_size/self.pdims
         #: The local physical space mesh
