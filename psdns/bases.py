@@ -446,14 +446,14 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         # Index array which picks out retained modes in a complex transform
         N = self.grid.sdims
         M = self.grid.pdims
-        i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
-        i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
+        i0 = numpy.array([*range(0, N[0]//2+1), *range(-((N[0]-1)//2), 0)])
+        i1 = numpy.array([*range(0, N[1]//2+1), *range(-((N[1]-1)//2), 0)])
         # It would be more efficient to design MPI slices that fit
         # the non-contiguous array returned by the slicing here.
         t1 = numpy.fft.rfft2(self._data)
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[1] > N[1] and N[1] % 2 == 0:
-                t1[..., :, -(N[1]//2), :] = \
+                t1[..., :, N[1]//2, :] = \
                   t1[..., :, N[1]//2, :] + t1[..., :, -(N[1]//2), :]
         elif self.grid._aliasing_strategy == 'truncate':
             if M[1] > N[1] and N[1] % 2 == 0:
@@ -491,11 +491,11 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             )
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[0] > N[0] and N[0] % 2 == 0:
-                t3[..., -(N[0]//2), :, :] = \
+                t3[..., N[0]//2, :, :] = \
                   t3[..., N[0]//2, :, :] + t3[..., -(N[0]//2), :, :]
         if self.grid._aliasing_strategy == 'truncate':
             if M[0] > N[0] and N[0] % 2 == 0:
-                t3[..., -(N[0]//2), :, :] = 0
+                t3[..., N[0]//2, :, :] = 0
         t3 = t3[..., i0, :, :]/numpy.prod(self.grid.pdims)
         return SpectralArray(self.grid, t3)
 
@@ -675,8 +675,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """
         N = self.grid.sdims
         M = self.grid.pdims
-        i0 = numpy.array([*range(0, (N[0]+1)//2), *range(-(N[0]//2), 0)])
-        i1 = numpy.array([*range(0, (N[1]+1)//2), *range(-(N[1]//2), 0)])
+        i0 = numpy.array([*range(0, N[0]//2+1), *range(-((N[0]-1)//2), 0)])
+        i1 = numpy.array([*range(0, N[1]//2+1), *range(-((N[1]-1)//2), 0)])
         s = numpy.zeros(
             self.shape[:-3]
             + (self.grid.pdims[0],
@@ -688,8 +688,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         s[..., i0, :, :] = self
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[0] > N[0] and N[0] % 2 == 0:
-                s[..., -(N[0]//2), :, :] *= 0.5
-                s[..., N[0]//2, :, :] = s[..., -(N[0]//2), :, :]
+                s[..., N[0]//2, :, :] *= 0.5
+                s[..., -(N[0]//2), :, :] = s[..., N[0]//2, :, :]
         t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
 #        t2 = numpy.zeros(
 #            self.shape[:-3]
@@ -718,8 +718,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
 #        t25[..., i1, :] = t2
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[1] > N[1] and N[1] % 2 == 0:
-                t2[..., :, -(N[1]//2), :] *= 0.5
-                t2[..., :, N[1]//2, :] = t2[..., :, -(N[1]//2), :]
+                t2[..., :, N[1]//2, :] *= 0.5
+                t2[..., :, -(N[1]//2), :] = t25[..., :, N[1]//2, :]
         t3 = numpy.fft.irfft2(
             t2,
             s=self.grid.x.shape[2:],
