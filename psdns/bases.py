@@ -114,6 +114,20 @@ class SpectralGrid(object):
         #: A list, each element of which is a 3-tuple of
         #: Python :class:`slice` objects describing the slice of the
         #: global spectral mesh stored on the n-th MPI rank
+        #:
+        #: We require the number of MPI ranks to be even, so that we do
+        #: not have to deal with the case where a spectral slice includes
+        #: two discontinous subarrays, since the associated MPI datatype
+        #: is likely to be inefficient.
+        #:
+        #: The domain is decomposed into two parts, each using half of the
+        #: MPI ranks.  The first contain the zero mode and positive modes,
+        #: the second contains the negative modes.  This decomposition will
+        #: not be optimally efficient for certain cases, such as when
+        #: there are two ranks (one will have two more modes than the other),
+        #: or when the number of ranks is equal to the number of modes (the
+        #: decomposition will fail, whereas it should allocate two additional
+        #: ranks to the first half of the mode space).
         
         #self.spectral_slices = [
         #    (slice(0, self.sdims[0]),
@@ -131,48 +145,48 @@ class SpectralGrid(object):
         #     slice(i*q + min(i,r), (i+1)*q + min(i+1,r)),
         #     slice(0, self.sdims[2]//2+1))
         #    for i in range(self.comm.size) 
-        #    ] 
+        #    ]
 
+        if self.comm.size % 2:
+            raise ValueError("Number of MPI ranks must be even.")
         self.spectral_slices = []
         self.spectral_dealias_slices = []
-        # Divide sdims into first half and second half
-        s1 = self.sdims[1]//2 + 1
-        s2 = self.sdims[1]//2
-        if self.sdims[1] % 2 == 0:
-            s2 = s2 - 1
-        # Calculate size of aliased region 
+        # Divide sdims into first half and second half.  The first half is
+        # the number of positive modes, sdims[1]//2, plus the zero mode.
+        # The second half is the number of negative modes, sdims[1]-1)//2.
+        s1 = self.sdims[1] // 2 + 1
+        s2 = (self.sdims[1] - 1) // 2
+        # Calculate size of aliased region (the number of modes we truncate)
         aliased_size = self.pdims[1] - self.sdims[1]
         # Populate slice lists 
-        for i in range(self.comm.size):
-            if i < self.comm.size//2:
-                self.spectral_slices.append(
-                    [slice(0, self.sdims[0]),
-                     slice(i*s1//(self.comm.size//2), (i+1)*s1//(self.comm.size//2)),
-                     slice(0, self.sdims[2]//2 + 1)]
-                    )
-                self.spectral_dealias_slices.append(
-                    [slice(0, self.sdims[0]),
-                     slice(i*s1//(self.comm.size//2), (i+1)*s1//(self.comm.size//2)),
-                     slice(0, self.sdims[2]//2 + 1)]
-                    )
-            else:
-                self.spectral_slices.append(
-                    [slice(0, self.sdims[0]),
-                     slice(i*s2//(self.comm.size//2) + 2, 
-                           (i+1)*s2//(self.comm.size//2) + 2),
-                     slice(0, self.sdims[2]//2 + 1)]
-                    )
-                self.spectral_dealias_slices.append(
-                    [slice(0, self.sdims[0]),
-                     slice(i*s2//(self.comm.size//2) + 2 + aliased_size, 
-                          (i+1)*s2//(self.comm.size//2) + 2 + aliased_size),
-                     slice(0, self.sdims[2]//2 + 1)]
-                    )
-
-
+        for i in range(self.comm.size//2):
+            self.spectral_slices.append(
+                [slice(0, self.sdims[0]),
+                 slice(i*s1//(self.comm.size//2), (i+1)*s1//(self.comm.size//2)),
+                 slice(0, self.sdims[2]//2+1)]
+                )
+            self.spectral_dealias_slices.append(
+                [slice(0, self.sdims[0]),
+                 slice(i*s1//(self.comm.size//2), (i+1)*s1//(self.comm.size//2)),
+                 slice(0, self.sdims[2]//2+1)]
+                )
+        for i in range(self.comm.size//2):
+            self.spectral_slices.append(
+                [slice(0, self.sdims[0]),
+                 slice(i*s2//(self.comm.size//2) + s1,
+                           (i+1)*s2//(self.comm.size//2) + s1),
+                 slice(0, self.sdims[2]//2+1)]
+                )
+            self.spectral_dealias_slices.append(
+                [slice(0, self.sdims[0]),
+                 slice(i*s2//(self.comm.size//2) + s1 + aliased_size,
+                       (i+1)*s2//(self.comm.size//2) + s1 + aliased_size),
+                 slice(0, self.sdims[2]//2+1)]
+                )
 
         #: The slice of the global spectral mesh stored by this process
         self.local_spectral_slice = self.spectral_slices[self.comm.rank]
+        self.local_dealias_slice = self.spectral_dealias_slices[self.comm.rank]
         #: A list, each element of which is a 3-tuple of
         #: Python :class:`slice` objects describing the slice of the
         #: global spectral mesh stored on the n-th MPI rank
@@ -443,7 +457,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                   t1[..., :, N[1]//2, :] + t1[..., :, -(N[1]//2), :]
         elif self.grid._aliasing_strategy == 'truncate':
             if M[1] > N[1] and N[1] % 2 == 0:
-                t1[..., :, -(N[1]//2), :] = 0
+                t1[..., :, N[1]//2, :] = 0
         t1 = numpy.ascontiguousarray(t1)
         t2 = numpy.zeros(
             t1.shape[:-3]
