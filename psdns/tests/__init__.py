@@ -33,7 +33,7 @@ class for use in PsDNS tests.
 import contextlib
 import os
 import unittest
-
+import cupy as numpy
 import matplotlib
 matplotlib.use('PDF')
 import matplotlib.pylab as plt

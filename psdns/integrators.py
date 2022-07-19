@@ -104,6 +104,7 @@ class Integrator(object):
                 "Total compute time = ", self.total_walltime,
                 file=sys.stderr
                 )
+            return self.total_walltime
 
 
 class Euler(Integrator):

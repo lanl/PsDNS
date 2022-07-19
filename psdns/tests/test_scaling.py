@@ -13,8 +13,7 @@ aliasing.
 from functools import partial
 from math import log
 import unittest
-
-import  numpy
+import numpy
 import scipy.optimize
 
 from mpi4py import MPI
@@ -74,7 +73,7 @@ class ScalingTest(tests.TestCase):
         (:math:`N_\mathrm{Ranks}^{-1}`) is shown for reference.  For
         ``'weak'`` scaling, the reference line is a constant.
         """
-        walltimes = total_walltimes/ncpus
+        walltimes = (total_walltimes.get())/ncpus
         ax.plot(ncpus, walltimes, 's', label=label)
         if scaling == 'strong':
             ax.plot(ncpus, walltimes[0]*ncpus[0]/ncpus, 'k--')
@@ -103,7 +102,7 @@ class ScalingTest(tests.TestCase):
         """
         ax.plot(
             ncpus,
-            total_walltimes[0]*ncpus/total_walltimes,
+            total_walltimes.get()[0]*ncpus/total_walltimes.get(),
             's',
             )
         ax.plot(
@@ -129,7 +128,7 @@ class ScalingTest(tests.TestCase):
         """
         ax.plot(
             ncpus,
-            total_walltimes[0]/total_walltimes,
+            total_walltimes.get()[0]/total_walltimes.get(),
             's'
             )
         ax.plot(
@@ -161,7 +160,7 @@ class ScalingTest(tests.TestCase):
                 solver = self.integrator(ic=self.ic(grid))
                 solver.run()
                 total_walltimes.append(solver.total_walltime)
-        return numpy.array(total_walltimes)
+        return total_walltimes
 
 
 @unittest.skipIf(
@@ -184,11 +183,11 @@ class TestStrongScaling(ScalingTest):
     #: A list of cases to run.  Each case is defined by a tuple
     #: consisting of the problem size, and the minimum and maximum
     #: number of processors (specified as powers of two) to run on.
-    cases = [
+    cases = ([
         (64, 0, 6),
         (256, 3, 8),
         (1024, 8, 10)
-        ]
+        ])
 
     def test_strong_scaling_tgv(self):
         r"""Strong scaling for the Navier-Stokes equations
@@ -213,13 +212,14 @@ class TestStrongScaling(ScalingTest):
 
             Strong scaling up to 1024 ranks.
         """
+        #[2**n for n in range(nmin, nmax+1)
+                         #if 2**n <= MPI.COMM_WORLD.size]
         with self.subplots(1, 3, figsize=(9, 3)) as (fig, axs):
             for N, nmin, nmax in self.cases:
                 with self.subTest(N=N):
-                    ncpus = numpy.array(
-                        [2**n for n in range(nmin, nmax+1)
+                    ncpus = numpy.array([2**n for n in range(nmin, nmax+1)
                          if 2**n <= MPI.COMM_WORLD.size]
-                        )
+                         )
                     if ncpus.size == 0:
                         continue
                     grids = (
@@ -235,8 +235,8 @@ class TestStrongScaling(ScalingTest):
                         fit = lambda x, A, n: A*x**-n
                         popt, pcov = scipy.optimize.curve_fit(
                             fit,
-                            ncpus,
-                            total_walltimes/ncpus,
+                            ncpus.get(),
+                            total_walltimes/ncpus.get(),
                             )
                         self.assertGreaterEqual(
                             popt[1],
@@ -247,10 +247,10 @@ class TestStrongScaling(ScalingTest):
                 if MPI.COMM_WORLD.rank == 0:
                     # Plot the results
                     self.plot_wall_time(
-                        axs[0], total_walltimes, ncpus, f"$N={N}^3$"
+                        axs[0], numpy.array(total_walltimes),ncpus.get(), f"$N={N}^3$"
                         )
-                    self.plot_speedup(axs[1], total_walltimes, ncpus)
-                    self.plot_efficiency(axs[2], total_walltimes, ncpus)
+                    self.plot_speedup(axs[1], numpy.array(total_walltimes), ncpus.get())
+                    self.plot_efficiency(axs[2], numpy.array(total_walltimes), ncpus.get())
                     fig.suptitle(cpu_description)
                     fig.tight_layout()
 
@@ -303,7 +303,7 @@ class TestWeakScaling(ScalingTest):
             2**n for n in range(13)
             if 2**n <= MPI.COMM_WORLD.size
             ]
-        size = [int(2**6*numpy.cbrt(ncpu)) for ncpu in ncpus]
+        sizes = [int(2**6*numpy.cbrt(ncpu)) for ncpu in ncpus]
         grids = (
             SpectralGrid(
                 n,
@@ -316,7 +316,7 @@ class TestWeakScaling(ScalingTest):
             with self.subplots() as (fig, ax):
                 self.plot_wall_time(
                     ax,
-                    total_walltimes/numpy.log2(numpy.array(sizes)),
+                    numpy.array(total_walltimes)/numpy.log2(numpy.array(sizes)),
                     ncpus,
                     scaling='weak'
                     )

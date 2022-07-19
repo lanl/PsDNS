@@ -1,6 +1,6 @@
 import warnings
-import numpy 
-import cupy as cp
+import numpy as np 
+import cupy as numpy
 from psdns import *
 
 

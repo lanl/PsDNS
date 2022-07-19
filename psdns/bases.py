@@ -618,7 +618,7 @@ class SpectralArray(np.lib.mixins.NDArrayOperatorsMixin):
                 s[..., -(N[0]//2), :, :] *= 0.5
                 s[..., N[0]//2, :, :] = s[..., -(N[0]//2), :, :]
         t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
-        t2 = numpy.zeros(
+        t2 = np.zeros(
             self.shape[:-3]
             + (int(self.grid.local_physical_slice[0].stop)
                - int(self.grid.local_physical_slice[0].start),
@@ -630,8 +630,8 @@ class SpectralArray(np.lib.mixins.NDArrayOperatorsMixin):
         counts = [count] * self.grid.comm.size
         displs = [0] * self.grid.comm.size
         self.grid.comm.Alltoallw(
-            [numpy.asnumpy(t1), counts, displs, numpy.asnumpy(self.grid.slice2)],
-            [numpy.asnumpy(t2), counts, displs, numpy.asnumpy(self.grid.slice1)],
+            [numpy.asnumpy(t1), counts, displs, (self.grid.slice2)],
+            [t2, counts, displs, (self.grid.slice1)],
             )
         t25 = numpy.zeros(
             self.shape[:-3]
