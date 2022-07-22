@@ -99,18 +99,30 @@ class SpectralGrid(object):
                 "Truncating to an even number of modes in y: "
                 "see the manual for why you don't want to do this"
                 )
+        #: DOCUMENT ME
+        z_slices = [
+            slice(i*self.pdims[0]//self.comm.size,
+                  (i+1)*self.pdims[0]//self.comm.size)
+            for i in range(self.comm.size)
+            ]
         #: A list, each element of which is a 3-tuple of
         #: Python :class:`slice` objects describing the slice of the
         #: global physical mesh stored on the n-th MPI rank
-        self.physical_slices = [
-            (slice(i*self.pdims[0]//self.comm.size,
-                   (i+1)*self.pdims[0]//self.comm.size),
-             slice(0, self.pdims[1]),
-             slice(0, self.pdims[2]))
-            for i in range(self.comm.size)
-            ]
+        #self.physical_slices = [
+        #    (slice(i*self.pdims[0]//self.comm.size,
+        #           (i+1)*self.pdims[0]//self.comm.size),
+        #     slice(0, self.pdims[1]),
+        #     slice(0, self.pdims[2]))
+        #    for i in range(self.comm.size)
+        #    ]
         #: The slice of the global physical mesh stored by this process
-        self.local_physical_slice = self.physical_slices[self.comm.rank]
+        self._local_z_slice = z_slices[self.comm.rank]
+        local_physical_slice = (
+            self._local_z_slice,
+            slice(0, self.pdims[1]),
+            slice(0, self.pdims[2])
+            )
+        #self.local_physical_slice = self.physical_slices[self.comm.rank]
         #: A list, each element of which is a 3-tuple of
         #: Python :class:`slice` objects describing the slice of the
         #: global spectral mesh stored on the n-th MPI rank
@@ -149,44 +161,14 @@ class SpectralGrid(object):
 
         if self.comm.size % 2:
             raise ValueError("Number of MPI ranks must be even.")
-        self.spectral_slices = []
-        self.spectral_dealias_slices = []
-        # Divide sdims into first half and second half.  The first half is
-        # the number of positive modes, sdims[1]//2, plus the zero mode.
-        # The second half is the number of negative modes, sdims[1]-1)//2.
-        s1 = self.sdims[1] // 2 + 1
-        s2 = (self.sdims[1] - 1) // 2
-        # Calculate size of aliased region (the number of modes we truncate)
-        aliased_size = self.pdims[1] - self.sdims[1]
-        # Populate slice lists 
-        for i in range(self.comm.size//2):
-            self.spectral_slices.append(
-                [slice(0, self.sdims[0]),
-                 slice(i*s1//(self.comm.size//2), (i+1)*s1//(self.comm.size//2)),
-                 slice(0, self.sdims[2]//2+1)]
-                )
-            self.spectral_dealias_slices.append(
-                [slice(0, self.sdims[0]),
-                 slice(i*s1//(self.comm.size//2), (i+1)*s1//(self.comm.size//2)),
-                 slice(0, self.sdims[2]//2+1)]
-                )
-        for i in range(self.comm.size//2):
-            self.spectral_slices.append(
-                [slice(0, self.sdims[0]),
-                 slice(i*s2//(self.comm.size//2) + s1,
-                           (i+1)*s2//(self.comm.size//2) + s1),
-                 slice(0, self.sdims[2]//2+1)]
-                )
-            self.spectral_dealias_slices.append(
-                [slice(0, self.sdims[0]),
-                 slice(i*s2//(self.comm.size//2) + s1 + aliased_size,
-                       (i+1)*s2//(self.comm.size//2) + s1 + aliased_size),
-                 slice(0, self.sdims[2]//2+1)]
-                )
-
+        ky_slices = self.decompose(self.sdims[1], self.comm.size)
         #: The slice of the global spectral mesh stored by this process
-        self.local_spectral_slice = self.spectral_slices[self.comm.rank]
-        self.local_dealias_slice = self.spectral_dealias_slices[self.comm.rank]
+        self._local_ky_slice = ky_slices[self.comm.rank]
+        local_spectral_slice = (
+            slice(0, self.sdims[0]),
+            self._local_ky_slice,
+            slice(0, self.sdims[2]//2+1)
+            )
         #: A list, each element of which is a 3-tuple of
         #: Python :class:`slice` objects describing the slice of the
         #: global spectral mesh stored on the n-th MPI rank
@@ -215,8 +197,8 @@ class SpectralGrid(object):
         self.dx = box_size/self.pdims
         #: The local physical space mesh
         self.x = self.dx[:,numpy.newaxis, numpy.newaxis, numpy.newaxis] \
-            * numpy.mgrid[self.local_physical_slice]
-        k = numpy.mgrid[self.local_spectral_slice]
+            * numpy.mgrid[local_physical_slice]
+        k = numpy.mgrid[local_spectral_slice]
         # Note, use sample spacing/2pi to get radial frequencies, rather
         # than circular frequencies.
         fftfreq0 = numpy.fft.fftfreq(self.pdims[0], self.dx[0]/(2*numpy.pi))[
@@ -243,6 +225,9 @@ class SpectralGrid(object):
             numpy.amax(fftfreq0**2) + numpy.amax(fftfreq1**2)
             + numpy.amax(rfftfreq**2)
             )
+        
+        s1 = self.sdims[1] // 2 + 1
+        aliased_size = self.pdims[1] - self.sdims[1]        
         #: Meshes are domain decomposed into slabs in the first dimension
         #: in physical space, and the second dimension in spectral
         #: space.  A three-dimensional FFT is performed by first
@@ -260,37 +245,37 @@ class SpectralGrid(object):
         #: current rank).
         self.slice1 = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
-                [self.local_physical_slice[0].stop
-                 - self.local_physical_slice[0].start,
+                [self._local_z_slice.stop
+                 - self._local_z_slice.start,
                  self.pdims[1],
                  self.pdims[2]//2+1
                 ],
-                [self.local_physical_slice[0].stop
-                 - self.local_physical_slice[0].start,
-                 s[1].stop - s[1].start,
+                [self._local_z_slice.stop
+                 - self._local_z_slice.start,
+                 s.stop - s.start,
                  self.sdims[2]//2+1
                 ],
-                [0, s[1].start, 0],
+                [0, s.start + (aliased_size if s.start >= s1 else 0), 0],
                 ).Commit()
-            for s in self.spectral_dealias_slices
+            for s in ky_slices
             ]
         #: A list of receiving data types for the slab decomposition
         #: swap (see :attr:`slice1`).
         self.slice2 = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
                 [self.pdims[0],
-                 self.local_spectral_slice[1].stop
-                 - self.local_spectral_slice[1].start,
+                 self._local_ky_slice.stop
+                 - self._local_ky_slice.start,
                  self.sdims[2]//2+1
                 ],
-                [p[0].stop - p[0].start,
-                 self.local_spectral_slice[1].stop
-                 - self.local_spectral_slice[1].start,
+                [p.stop - p.start,
+                 self._local_ky_slice.stop
+                 - self._local_ky_slice.start,
                  self.sdims[2]//2+1
                 ],
-                [p[0].start, 0, 0],
+                [p.start, 0, 0],
                 ).Commit()
-            for p in self.physical_slices
+            for p in z_slices
             ]
 
     @cached_property
@@ -313,7 +298,24 @@ class SpectralGrid(object):
                 - self.k[None, ...] * self.k[:, None, ...]
                 / numpy.where(self.k2 == 0, 1, self.k2))
 
-
+    @staticmethod
+    def decompose(nmodes, ncpus):
+        """Decompose *nmodes* across *ncpus*."""
+        # Note, this may be too much work.  Just divide ncpus in two, and then handle the specuial
+        # case of ncpus == nmodes if necessary.  This is already suboptimal for large odd ncpus.
+        nmodes1 = nmodes // 2 + 1
+        nmodes2 = ( nmodes - 1 ) // 2
+        ncpus1 = ncpus * nmodes1 // nmodes
+        ncpus2 = ncpus - ncpus1
+        return [
+            slice(i*nmodes1//ncpus1, (i+1)*nmodes1//ncpus1)
+            for i in range(ncpus1)
+            ] + [
+            slice(i*nmodes2//ncpus2 + nmodes1, (i+1)*nmodes2//ncpus2 + nmodes1)
+            for i in range(ncpus2)
+            ]
+                
+            
 class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     """Array of physical space data
 
@@ -462,8 +464,8 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         t2 = numpy.zeros(
             t1.shape[:-3]
             + (self.grid.pdims[0],
-               self.grid.local_spectral_slice[1].stop
-               - self.grid.local_spectral_slice[1].start,
+               self.grid._local_ky_slice.stop
+               - self.grid._local_ky_slice.start,
                self.grid.sdims[2]//2+1),
             dtype=complex
             )
@@ -605,10 +607,10 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         extents = list(self.grid.sdims)
         subextents = list(self.grid.sdims)
         extents[2] = subextents[2] = self.grid.sdims[2]//2+1
-        subextents[1] = self.grid.local_spectral_slice[1].stop \
-            - self.grid.local_spectral_slice[1].start
+        subextents[1] = self.grid._local_ky_slice.stop \
+            - self.grid._local_ky_slice.start
         starts = len(extents) * [0]
-        starts[1] = self.grid.local_spectral_slice[1].start
+        starts[1] = self.grid._local_ky_slice.start
         return MPI.DOUBLE_COMPLEX.Create_subarray(
             extents, subextents, starts
             ).Commit()
@@ -680,8 +682,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         s = numpy.zeros(
             self.shape[:-3]
             + (self.grid.pdims[0],
-               self.grid.local_spectral_slice[1].stop
-               - self.grid.local_spectral_slice[1].start,
+               self.grid._local_ky_slice.stop
+               - self.grid._local_ky_slice.start,
                self.grid.sdims[2]//2+1),
             dtype=complex
             )
@@ -693,8 +695,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
 #        t2 = numpy.zeros(
 #            self.shape[:-3]
-#            + (self.grid.local_physical_slice[0].stop
-#               - self.grid.local_physical_slice[0].start,
+#            + (self.grid._local_z_slice.stop
+#               - self.grid._local_z_slice.start,
 #               self.grid.sdims[1],
 #               self.grid.pdims[2]//2+1),
 #            dtype=complex
@@ -702,8 +704,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         # Formally known as t25:
         t2 = numpy.zeros(
             self.shape[:-3]
-            + (self.grid.local_physical_slice[0].stop
-               - self.grid.local_physical_slice[0].start,
+            + (self.grid._local_z_slice.stop
+               - self.grid._local_z_slice.start,
                self.grid.pdims[1],
                self.grid.pdims[2]//2+1),
             dtype=complex
@@ -798,11 +800,11 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         specified *val*.
         """
         mode[1] %= self.grid.sdims[1]
-        if (mode[1] >= self.grid.local_spectral_slice[1].start and
-                mode[1] < self.grid.local_spectral_slice[1].stop):
+        if (mode[1] >= self.grid._local_ky_slice.start and
+                mode[1] < self.grid._local_ky_slice.stop):
             self._data[
                 mode[0],
-                mode[1]-self.grid.local_spectral_slice[1].start,
+                mode[1]-self.grid._local_ky_slice.start,
                 mode[2]
                 ] = val
 
@@ -817,12 +819,12 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         # processor that finds the mode send the data to the root,
         # instead of a global reduce.
         mode[1] %= self.grid.sdims[1]
-        if (mode[1] >= self.grid.local_spectral_slice[1].start and
-                mode[1] < self.grid.local_spectral_slice[1].stop):
+        if (mode[1] >= self.grid._local_ky_slice.start and
+                mode[1] < self.grid._local_ky_slice.stop):
             val = self._data[
                 ...,
                 mode[0],
-                mode[1]-self.grid.local_spectral_slice[1].start,
+                mode[1]-self.grid._local_ky_slice.start,
                 mode[2]
                 ]
         else:
