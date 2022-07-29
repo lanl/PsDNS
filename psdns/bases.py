@@ -100,11 +100,23 @@ class SpectralGrid(object):
                 "see the manual for why you don't want to do this"
                 )
         #: DOCUMENT ME
-        z_slices = [
-            slice(i*self.pdims[0]//self.comm.size,
-                  (i+1)*self.pdims[0]//self.comm.size)
-            for i in range(self.comm.size)
+        P1 = 2 # CPUs in 1st direction (assigned)
+        P2 = self.comm.size / P1 # CPUs in 2nd direction
+        # Create two communicator groups (?) 
+        self.comm_zy = self.comm.Split(self.comm.rank // P1)
+        self.comm_yx = self.comm.Split(self.comm.rank % P1)
+        #: DOCUMENT ME
+        x_slices = [
+            slice(i*self.pdims[0]//P1,
+                  (i+1)*self.pdims[0]//P1)
+            for i in range(P1)
             ]
+        y_slices = [
+            slice(i*self.pdims[0]//P2,
+                  (i+1)*self.pdims[0]//P2)
+            for i in range(P2)
+            ]
+
         #: A list, each element of which is a 3-tuple of
         #: Python :class:`slice` objects describing the slice of the
         #: global physical mesh stored on the n-th MPI rank
@@ -116,12 +128,18 @@ class SpectralGrid(object):
         #    for i in range(self.comm.size)
         #    ]
         #: The slice of the global physical mesh stored by this process
-        self._local_z_slice = z_slices[self.comm.rank]
+
+        # Get local ranks 
+        zy_rank = self.comm_zy.Get_rank()
+        yx_rank = self.comm_yx.Get_rank()
+        self._local_x_slice = x_slices[yx_rank] #?
+        self._local_y_slice = y_slices[zy_rank] #?
         local_physical_slice = (
-            self._local_z_slice,
-            slice(0, self.pdims[1]),
+            self._local_x_slice,
+            self._local_y_slice,
             slice(0, self.pdims[2])
             )
+        
         #self.local_physical_slice = self.physical_slices[self.comm.rank]
         #: A list, each element of which is a 3-tuple of
         #: Python :class:`slice` objects describing the slice of the
@@ -161,13 +179,15 @@ class SpectralGrid(object):
 
         if self.comm.size % 2:
             raise ValueError("Number of MPI ranks must be even.")
-        ky_slices = self.decompose(self.sdims[1], self.comm.size)
+        ky_slices = self.decompose(self.sdims[1], P1)
+        kz_slices = self.decompose(self.sdims[2], P2)
         #: The slice of the global spectral mesh stored by this process
         self._local_ky_slice = ky_slices[self.comm.rank]
+        self._local_kz_slice = kz_slices[self.comm.rank]
         local_spectral_slice = (
             slice(0, self.sdims[0]),
             self._local_ky_slice,
-            slice(0, self.sdims[2]//2+1)
+            self._local_kz_slice
             )
         #: A list, each element of which is a 3-tuple of
         #: Python :class:`slice` objects describing the slice of the
@@ -243,41 +263,117 @@ class SpectralGrid(object):
         #: corresponding receiving slices (i.e, the n-th element
         #: describes the data to be received from the n-th rank to the
         #: current rank).
-        self.slice1 = [
+        #self.slice1 = [
+        #    MPI.DOUBLE_COMPLEX.Create_subarray(
+        #        [self._local_x_slice.stop
+        #         - self._local_x_slice.start,
+        #         self.pdims[1],
+        #         self.pdims[2]//2+1
+        #        ],
+        #        [self._local_x_slice.stop
+        #         - self._local_x_slice.start,
+        #         s.stop - s.start,
+        #         self.sdims[2]//2+1
+        #        ],
+        #        [0, s.start + (aliased_size if s.start >= s1 else 0), 0],
+        #        ).Commit()
+        #    for s in ky_slices
+        #    ]
+        #: A list of receiving data types for the slab decomposition
+        #: swap (see :attr:`slice1`).
+        #self.slice2 = [
+        #    MPI.DOUBLE_COMPLEX.Create_subarray(
+        #        [self.pdims[0],
+        #         self._local_ky_slice.stop
+        #         - self._local_ky_slice.start,
+        #         self.sdims[2]//2+1
+        #        ],
+        #        [p.stop - p.start,
+        #         self._local_ky_slice.stop
+        #         - self._local_ky_slice.start,
+        #         self.sdims[2]//2+1
+        #        ],
+        #        [p.start, 0, 0],
+        #        ).Commit()
+        #    for p in x_slices
+        #    ]
+
+        #: DOCUMENT ME
+        self._xy_pencils = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
-                [self._local_z_slice.stop
-                 - self._local_z_slice.start,
-                 self.pdims[1],
-                 self.pdims[2]//2+1
+                [self._local_x_slice.stop 
+                 - self._local_x_slice.start,
+                 self._local_y_slice.stop 
+                 - self._local_y_slice.start,
+                 self.pdims[2]//2 + 1
                 ],
-                [self._local_z_slice.stop
-                 - self._local_z_slice.start,
-                 s.stop - s.start,
-                 self.sdims[2]//2+1
+                [self._local_x_slice.stop 
+                 - self._local_x_slice.start,
+                 self._local_y_slice.stop 
+                 - self._local_y_slice.start,
+                 s.stop - s.start
                 ],
-                [0, s.start + (aliased_size if s.start >= s1 else 0), 0],
+                [0, 0, s.start]
+                ).Commit()
+            for s in kz_slices
+            ]
+        self._xkz_pencils = [
+            MPI.DOUBLE_COMPLEX.Create_subarray(
+                [self._local_x_slice.stop 
+                 - self._local_x_slice.start,
+                 self.pdims[1],                
+                 self._local_kz_slice.stop
+                 - self._local_kz_slice.start
+                ],
+                [self._local_x_slice.stop
+                 - self._local_x_slice.start,
+                 p.stop - p.start
+                 self._local_kz_slice.stop
+                 - self._local_kz_slice.start
+                ],
+                [0, p.start, 0]
+                ).Commit()
+            for p in y_slices
+            ]
+        self._xkz2_pencils = [
+            MPI.DOUBLE_COMPLEX.Create_subarray(
+                [self._local_x_slice.stop 
+                 - self._local_x_slice.start,
+                 self.sdims[1],
+                 self._local_kz_slice.stop
+                 - self._local_kz_slice.start
+                ],
+                [self._local_x_slice.stop 
+                 - self._local_x_slice.start,
+                 s.stop - s.start
+                 self._local_kz_slice.stop
+                 - self._local_kz_slice.start
+                ],
+                [0, s.start + (aliased_size if s.start >= s1 else 0), 0]
                 ).Commit()
             for s in ky_slices
             ]
-        #: A list of receiving data types for the slab decomposition
-        #: swap (see :attr:`slice1`).
-        self.slice2 = [
+        self._kykz_pencils = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
                 [self.pdims[0],
                  self._local_ky_slice.stop
-                 - self._local_ky_slice.start,
-                 self.sdims[2]//2+1
+                 - self._local_ky_slice.start, 
+                 self._local_kz_slice.stop 
+                 - self._local_kz_slice.start
                 ],
                 [p.stop - p.start,
                  self._local_ky_slice.stop
-                 - self._local_ky_slice.start,
-                 self.sdims[2]//2+1
+                 - self._local_ky_slice.start, 
+                 self._local_kz_slice.stop 
+                 - self._local_kz_slice.start
                 ],
-                [p.start, 0, 0],
+                [p.start, 0, 0]
                 ).Commit()
-            for p in z_slices
+            for p in x_slices
             ]
 
+
+              
     @cached_property
     def P(self):
         r"""Navier-Stokes pressure projection operator.
@@ -452,7 +548,11 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         i1 = numpy.array([*range(0, N[1]//2+1), *range(-((N[1]-1)//2), 0)])
         # It would be more efficient to design MPI slices that fit
         # the non-contiguous array returned by the slicing here.
-        t1 = numpy.fft.rfft2(self._data)
+        #t1 = numpy.fft.rfft2(self._data)
+        t1 = numpy.fft.fft(
+                 self._data,
+                 axis=-1
+                 )
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[1] > N[1] and N[1] % 2 == 0:
                 t1[..., :, N[1]//2, :] = \
@@ -463,10 +563,11 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         t1 = numpy.ascontiguousarray(t1)
         t2 = numpy.zeros(
             t1.shape[:-3]
-            + (self.grid.pdims[0],
-               self.grid._local_ky_slice.stop
-               - self.grid._local_ky_slice.start,
-               self.grid.sdims[2]//2+1),
+            + (self.grid._local_x_slice.stop
+               - self.grid._local_x_slice.start,
+               self.pdims[1], 
+               self.grid._local_kz_slice.stop
+               - self._local_kz_slice.start),
             dtype=complex
             )
         # Note:
@@ -481,25 +582,55 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         #    which is *count*, is also already embedded in the subarray MPI
         #    datatype.
         count = numpy.prod(self.shape[:-3], dtype=int)
-        counts = [count] * self.grid.comm.size
-        disp = [0] * self.grid.comm.size
-        self.grid.comm.Alltoallw(
-            [t1, counts, disp, self.grid.slice1],
-            [t2, counts, disp, self.grid.slice2]
+        counts = [count] * self.grid.comm_zy.size
+        disp = [0] * self.grid.comm_zy.size
+        self.grid.comm_zy.Alltoallw(
+            [t1, counts, disp, self.grid._xy_pencils],
+            [t2, counts, disp, self.grid._xkz_pencils]
             )
+             
         t3 = numpy.fft.fft(
-            t2,
+                 t2,
+                 axis=-2
+                 )
+        if self.grid._aliasing_strategy == 'mpi4py':
+            if M[1] > N[1] and N[1] % 2 == 0:
+                t3[..., :, N[1]//2, :] = \
+                  t3[..., :, N[1]//2, :] + t3[..., :, -(N[1]//2), :]
+        elif self.grid._aliasing_strategy == 'truncate':
+            if M[1] > N[1] and N[1] % 2 == 0:
+                t3[..., :, N[1]//2, :] = 0
+        t3 = numpy.ascontiguousarray(t3)
+        t4 = numpy.zeros(
+            t3.shape[:-3]
+            + (self.pdims[0],
+               self._local_ky_slice.stop
+               - self._local_ky_slice.stop, 
+               self._local_kz_slice.stop 
+               - self._local_kz_slice.start),
+            dtype=complex
+            )
+        count = numpy.prod(self.shape[:-3], dtype=int)
+        counts = [count] * self.grid.comm_yx.size
+        disp = [0] * self.grid.comm_yx.size
+        self.grid.comm_yx.Alltoallw(
+            [t1, counts, disp, self.grid._xkz2_pencils],
+            [t2, counts, disp, self.grid._kykz_pencils]
+            )
+
+        t5 = numpy.fft.fft(
+            t4,
             axis=-3,
             )
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[0] > N[0] and N[0] % 2 == 0:
-                t3[..., N[0]//2, :, :] = \
-                  t3[..., N[0]//2, :, :] + t3[..., -(N[0]//2), :, :]
+                t5[..., N[0]//2, :, :] = \
+                  t5[..., N[0]//2, :, :] + t5[..., -(N[0]//2), :, :]
         if self.grid._aliasing_strategy == 'truncate':
             if M[0] > N[0] and N[0] % 2 == 0:
-                t3[..., N[0]//2, :, :] = 0
-        t3 = t3[..., i0, :, :]/numpy.prod(self.grid.pdims)
-        return SpectralArray(self.grid, t3)
+                t5..., N[0]//2, :, :] = 0
+        t5 = t5[..., i0, :, :]/numpy.prod(self.grid.pdims)
+        return SpectralArray(self.grid, t5)
 
     def norm(self):
         """Return the :math:`L_2` norm of the data."""
@@ -512,7 +643,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """Return the average of the data."""
         n = self.grid.comm.reduce(numpy.sum(self))
         if self.grid.comm.rank == 0:
-            n /= numpy.product(self.grid.pdims)
+            n /= numpy.product(self.grid.p::dims)
         return n
 
 
