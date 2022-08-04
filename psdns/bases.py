@@ -100,11 +100,12 @@ class SpectralGrid(object):
                 "see the manual for why you don't want to do this"
                 )
         #: DOCUMENT ME
-        P1 = 2 # CPUs in 1st direction (assigned)
-        P2 = self.comm.size / P1 # CPUs in 2nd direction
+        P1 = 1 # CPUs in 1st direction (assigned)
+        P2 = self.comm.size // P1 # CPUs in 2nd direction
         # Create two communicator groups (?) 
         self.comm_zy = self.comm.Split(self.comm.rank // P1)
         self.comm_yx = self.comm.Split(self.comm.rank % P1)
+        
         #: DOCUMENT ME
         x_slices = [
             slice(i*self.pdims[0]//P1,
@@ -116,6 +117,11 @@ class SpectralGrid(object):
                   (i+1)*self.pdims[0]//P2)
             for i in range(P2)
             ]
+        #if self.comm.rank==0:
+        #    for s in x_slices:
+        #        print('x', s)
+        #    for s in y_slices:
+        #        print('y', s)
 
         #: A list, each element of which is a 3-tuple of
         #: Python :class:`slice` objects describing the slice of the
@@ -129,11 +135,12 @@ class SpectralGrid(object):
         #    ]
         #: The slice of the global physical mesh stored by this process
 
-        # Get local ranks 
+        # Get local ranks. Due to the communicator split, we have more "local" slices
         zy_rank = self.comm_zy.Get_rank()
         yx_rank = self.comm_yx.Get_rank()
-        self._local_x_slice = x_slices[yx_rank] #?
-        self._local_y_slice = y_slices[zy_rank] #?
+        self._local_x_slice = x_slices[zy_rank]
+        self._local_y_slice = y_slices[yx_rank]
+
         local_physical_slice = (
             self._local_x_slice,
             self._local_y_slice,
@@ -177,13 +184,22 @@ class SpectralGrid(object):
         #    for i in range(self.comm.size) 
         #    ]
 
-        if self.comm.size % 2:
-            raise ValueError("Number of MPI ranks must be even.")
+        #if self.comm.size % 2:
+        #    raise ValueError("Number of MPI ranks must be even.")
         ky_slices = self.decompose(self.sdims[1], P1)
-        kz_slices = self.decompose(self.sdims[2], P2)
+        kz_slices = self.decompose(self.sdims[2] // 2 + 1, P2)
+
         #: The slice of the global spectral mesh stored by this process
-        self._local_ky_slice = ky_slices[self.comm.rank]
-        self._local_kz_slice = kz_slices[self.comm.rank]
+        # loal on comm_zy
+        self._local_ky_slice = ky_slices[zy_rank]
+        self._local_kz_slice = kz_slices[yx_rank]
+
+        #if self.comm.rank==0:
+        #    for s in ky_slices:
+        #        print('ky', s)
+        #    for s in kz_slices:
+        #        print('kz', s)
+
         local_spectral_slice = (
             slice(0, self.sdims[0]),
             self._local_ky_slice,
@@ -231,6 +247,8 @@ class SpectralGrid(object):
             self.pdims[2],self.dx[2]/(2*numpy.pi)
             )[:self.sdims[2]//2+1]
         #: The local spectral space mesh (wavenumbers)
+        #print(self.comm.rank, local_spectral_slice, fftfreq0.shape, fftfreq1.shape, rfftfreq.shape)
+	
         self.k = numpy.array([
             fftfreq0[k[0]],
             fftfreq1[k[1]],
@@ -298,6 +316,15 @@ class SpectralGrid(object):
         #    for p in x_slices
         #    ]
 
+
+        #for s in kz_slices:
+        #    print(self.comm.rank, [self._local_x_slice.stop 
+        #         - self._local_x_slice.start,
+        #         self._local_y_slice.stop 
+        #         - self._local_y_slice.start,
+        #         self.pdims[2]//2 + 1
+        #         ])
+
         #: DOCUMENT ME
         self._xy_pencils = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
@@ -327,7 +354,7 @@ class SpectralGrid(object):
                 ],
                 [self._local_x_slice.stop
                  - self._local_x_slice.start,
-                 p.stop - p.start
+                 p.stop - p.start,
                  self._local_kz_slice.stop
                  - self._local_kz_slice.start
                 ],
@@ -345,7 +372,7 @@ class SpectralGrid(object):
                 ],
                 [self._local_x_slice.stop 
                  - self._local_x_slice.start,
-                 s.stop - s.start
+                 s.stop - s.start,
                  self._local_kz_slice.stop
                  - self._local_kz_slice.start
                 ],
@@ -372,6 +399,9 @@ class SpectralGrid(object):
             for p in x_slices
             ]
 
+    def __del__(self):
+        self.comm_zy.Free()
+        self.comm_yx.Free()
 
               
     @cached_property
@@ -565,9 +595,9 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             t1.shape[:-3]
             + (self.grid._local_x_slice.stop
                - self.grid._local_x_slice.start,
-               self.pdims[1], 
+               self.grid.pdims[1], 
                self.grid._local_kz_slice.stop
-               - self._local_kz_slice.start),
+               - self.grid._local_kz_slice.start),
             dtype=complex
             )
         # Note:
@@ -584,6 +614,10 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         count = numpy.prod(self.shape[:-3], dtype=int)
         counts = [count] * self.grid.comm_zy.size
         disp = [0] * self.grid.comm_zy.size
+
+
+        #print('t1', t1.shape, 't2', t2.shape)
+
         self.grid.comm_zy.Alltoallw(
             [t1, counts, disp, self.grid._xy_pencils],
             [t2, counts, disp, self.grid._xkz_pencils]
@@ -603,19 +637,23 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         t3 = numpy.ascontiguousarray(t3)
         t4 = numpy.zeros(
             t3.shape[:-3]
-            + (self.pdims[0],
-               self._local_ky_slice.stop
-               - self._local_ky_slice.stop, 
-               self._local_kz_slice.stop 
-               - self._local_kz_slice.start),
+            + (self.grid.pdims[0],
+               self.grid._local_ky_slice.stop
+               - self.grid._local_ky_slice.start, 
+               self.grid._local_kz_slice.stop 
+               - self.grid._local_kz_slice.start),
             dtype=complex
             )
         count = numpy.prod(self.shape[:-3], dtype=int)
         counts = [count] * self.grid.comm_yx.size
         disp = [0] * self.grid.comm_yx.size
+
+        #print('t3', t3.shape, 't4', t4.shape)
+
+
         self.grid.comm_yx.Alltoallw(
-            [t1, counts, disp, self.grid._xkz2_pencils],
-            [t2, counts, disp, self.grid._kykz_pencils]
+            [t3, counts, disp, self.grid._xkz2_pencils],
+            [t4, counts, disp, self.grid._kykz_pencils]
             )
 
         t5 = numpy.fft.fft(
@@ -628,7 +666,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                   t5[..., N[0]//2, :, :] + t5[..., -(N[0]//2), :, :]
         if self.grid._aliasing_strategy == 'truncate':
             if M[0] > N[0] and N[0] % 2 == 0:
-                t5..., N[0]//2, :, :] = 0
+                t5[..., N[0]//2, :, :] = 0
         t5 = t5[..., i0, :, :]/numpy.prod(self.grid.pdims)
         return SpectralArray(self.grid, t5)
 
@@ -643,7 +681,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """Return the average of the data."""
         n = self.grid.comm.reduce(numpy.sum(self))
         if self.grid.comm.rank == 0:
-            n /= numpy.product(self.grid.p::dims)
+            n /= numpy.product(self.grid.pdims)
         return n
 
 
@@ -932,11 +970,13 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """
         mode[1] %= self.grid.sdims[1]
         if (mode[1] >= self.grid._local_ky_slice.start and
-                mode[1] < self.grid._local_ky_slice.stop):
+                mode[1] < self.grid._local_ky_slice.stop and 
+                mode[2] >= self.grid._local_kz_slice.start and
+                mode[2] < self.grid._local_kz_slice.stop):
             self._data[
                 mode[0],
                 mode[1]-self.grid._local_ky_slice.start,
-                mode[2]
+                mode[2]-self.grid._local_kz_slice.start
                 ] = val
 
     def get_mode(self, mode):
@@ -951,12 +991,14 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         # instead of a global reduce.
         mode[1] %= self.grid.sdims[1]
         if (mode[1] >= self.grid._local_ky_slice.start and
-                mode[1] < self.grid._local_ky_slice.stop):
+                mode[1] < self.grid._local_ky_slice.stop and 
+                mode[2] >= self.grid._local_kz_slice.start and
+                mode[2] < self.grid._local_kz_slice.stop):
             val = self._data[
                 ...,
                 mode[0],
                 mode[1]-self.grid._local_ky_slice.start,
-                mode[2]
+                mode[2]-self.grid._local_kz_slice.start
                 ]
         else:
             val = 0
