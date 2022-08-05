@@ -205,30 +205,6 @@ class SpectralGrid(object):
             self._local_ky_slice,
             self._local_kz_slice
             )
-        #: A list, each element of which is a 3-tuple of
-        #: Python :class:`slice` objects describing the slice of the
-        #: global spectral mesh stored on the n-th MPI rank
-        # assigns half the ranks to the portion of modes on one side
-        # the aliased nodes and the other half to the other side
-        # assumes even number of ranks  
-        # assumes sdims is odd (more modes on the left)
-        # q=quotient, r=remainder 
-        #q1, r1 = divmod(self.sdims[1]//2 + 1, self.comm.size//2)
-        #self.spectral_dealias_slices_1 = [
-        #    (slice(0, self.sdims[0]),
-        #     slice(i*q1 + min(i,r1), (i+1)*q1 + min(i+1,r1)),
-        #     slice(0, self.sdims[2]//2+1))
-        #    for i in range(self.comm.size//2) 
-        #    ]
-        #q2, r2 = divmod(self.sdims[1]//2, self.comm.size//2) 
-        #self.spectral_dealias_slices_2 = [
-        #    (slice(0, self.sdims[0]),
-        #     slice(i*q2 + min(i,r2) + self.sdims[1]//2 + 1 + self.pdims[1] - self.sdims[1],
-        #       (i+1)*q2 + min(i+1,r2) + self.sdims[1]//2 + self.pdims[1] - self.sdims[1]),
-        #     slice(0, self.sdims[2]//2+1))
-        #    for i in range(self.comm.size//2) 
-        #    ]
-        #self.spectral_dealias_slices = self.spectral_dealias_slices_1 + self.spectral_dealias_slices_2
         #: A 3-tuple with the physical mesh spacing in each dimension
         self.dx = box_size/self.pdims
         #: The local physical space mesh
@@ -378,6 +354,17 @@ class SpectralGrid(object):
                 ],
                 [0, s.start + (aliased_size if s.start >= s1 else 0), 0]
                 ).Commit()
+            if s.stop <= s1 or s.start >= s1 or self.pdims[1] == self.sdims[1] else
+            MPI.DOUBLE_COMPLEX.Create_indexed(
+                [ self.sdims[2]//2+1 ],
+                [ 0 ],
+                ).Create_resized(0, (self.pdims[2]//2+1)*16).Create_indexed(
+                    [ s1 - s.start, s.stop - s1 ],
+                    [ s.start, s1 + aliased_size ],
+                    ).Create_resized(0, self.pdims[1]*(self.pdims[2]//2+1)*16).Create_indexed(
+                        [ self._local_z_slice.stop - self._local_z_slice.start ],
+                        [ 0 ]
+                        ).Commit()
             for s in ky_slices
             ]
         self._kykz_pencils = [
@@ -425,21 +412,27 @@ class SpectralGrid(object):
                 / numpy.where(self.k2 == 0, 1, self.k2))
 
     @staticmethod
-    def decompose(nmodes, ncpus):
+    def decompose(nmodes, ncpus, even=True):
         """Decompose *nmodes* across *ncpus*."""
-        # Note, this may be too much work.  Just divide ncpus in two, and then handle the specuial
-        # case of ncpus == nmodes if necessary.  This is already suboptimal for large odd ncpus.
-        nmodes1 = nmodes // 2 + 1
-        nmodes2 = ( nmodes - 1 ) // 2
-        ncpus1 = ncpus * nmodes1 // nmodes
-        ncpus2 = ncpus - ncpus1
-        return [
-            slice(i*nmodes1//ncpus1, (i+1)*nmodes1//ncpus1)
-            for i in range(ncpus1)
-            ] + [
-            slice(i*nmodes2//ncpus2 + nmodes1, (i+1)*nmodes2//ncpus2 + nmodes1)
-            for i in range(ncpus2)
-            ]
+        if even:
+            return [
+                slice(i*nmodes//ncpus, (i+1)*nmodes//ncpus)
+                for i in range(ncpus)
+                ]
+        else:
+            # Note, this may be too much work.  Just divide ncpus in two, and then handle the specuial
+            # case of ncpus == nmodes if necessary.  This is already suboptimal for large odd ncpus.
+            nmodes1 = nmodes // 2 + 1
+            nmodes2 = ( nmodes - 1 ) // 2
+            ncpus1 = ncpus * nmodes1 // nmodes
+            ncpus2 = ncpus - ncpus1
+            return [
+                slice(i*nmodes1//ncpus1, (i+1)*nmodes1//ncpus1)
+                for i in range(ncpus1)
+                ] + [
+                slice(i*nmodes2//ncpus2 + nmodes1, (i+1)*nmodes2//ncpus2 + nmodes1)
+                for i in range(ncpus2)
+                ]
                 
             
 class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
@@ -890,7 +883,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[1] > N[1] and N[1] % 2 == 0:
                 t2[..., :, N[1]//2, :] *= 0.5
-                t2[..., :, -(N[1]//2), :] = t25[..., :, N[1]//2, :]
+                t2[..., :, -(N[1]//2), :] = t2[..., :, N[1]//2, :]
         t3 = numpy.fft.irfft2(
             t2,
             s=self.grid.x.shape[2:],
