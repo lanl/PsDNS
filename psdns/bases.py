@@ -100,23 +100,25 @@ class SpectralGrid(object):
                 "see the manual for why you don't want to do this"
                 )
         #: DOCUMENT ME
-        P1 = 1 # CPUs in 1st direction (assigned)
+        P1 = 2 # CPUs in 1st direction (assigned)
         P2 = self.comm.size // P1 # CPUs in 2nd direction
         # Create two communicator groups (?) 
         self.comm_zy = self.comm.Split(self.comm.rank // P1)
         self.comm_yx = self.comm.Split(self.comm.rank % P1)
         
         #: DOCUMENT ME
-        x_slices = [
-            slice(i*self.pdims[0]//P1,
-                  (i+1)*self.pdims[0]//P1)
-            for i in range(P1)
-            ]
-        y_slices = [
-            slice(i*self.pdims[0]//P2,
-                  (i+1)*self.pdims[0]//P2)
-            for i in range(P2)
-            ]
+        x_slices = self.decompose(self.pdims[0], P1)
+        y_slices = self.decompose(self.pdims[1], P2)
+        # x_slices = [
+        #     slice(i*self.pdims[0]//P1,
+        #           (i+1)*self.pdims[0]//P1)
+        #     for i in range(P1)
+        #     ]
+        # y_slices = [
+        #     slice(i*self.pdims[0]//P2,
+        #           (i+1)*self.pdims[0]//P2)
+        #     for i in range(P2)
+        #     ]
         #if self.comm.rank==0:
         #    for s in x_slices:
         #        print('x', s)
@@ -572,7 +574,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         # It would be more efficient to design MPI slices that fit
         # the non-contiguous array returned by the slicing here.
         #t1 = numpy.fft.rfft2(self._data)
-        t1 = numpy.fft.fft(
+        t1 = numpy.fft.rfft(
                  self._data,
                  axis=-1
                  )
@@ -610,12 +612,11 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
 
 
         #print('t1', t1.shape, 't2', t2.shape)
-
-        self.grid.comm_zy.Alltoallw(
+        print(self.grid.comm.rank, self.grid.comm_zy.size, self.grid.comm_yx.size, counts, flush=True)
+        self.grid.comm_yx.Alltoallw(
             [t1, counts, disp, self.grid._xy_pencils],
             [t2, counts, disp, self.grid._xkz_pencils]
             )
-             
         t3 = numpy.fft.fft(
                  t2,
                  axis=-2
@@ -643,8 +644,9 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
 
         #print('t3', t3.shape, 't4', t4.shape)
 
+        #print(self.grid.comm.rank, self.grid._xkz2_pencils, self.grid._kykz_pencils, flush=True)
 
-        self.grid.comm_yx.Alltoallw(
+        self.grid.comm_yz.Alltoallw(
             [t3, counts, disp, self.grid._xkz2_pencils],
             [t4, counts, disp, self.grid._kykz_pencils]
             )
