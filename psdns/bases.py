@@ -101,14 +101,15 @@ class SpectralGrid(object):
                 )
         #: DOCUMENT ME
         P1 = 2 # CPUs in 1st direction (assigned)
-        P2 = self.comm.size // P1 # CPUs in 2nd direction
+        P2 =self.comm.size // P1 # CPUs in 2nd direction
         # Create two communicator groups (?) 
-        self.comm_zy = self.comm.Split(self.comm.rank // P1)
-        self.comm_yx = self.comm.Split(self.comm.rank % P1)
+        self.comm_zy = self.comm.Split(self.comm.rank % P1)
+        self.comm_yx = self.comm.Split(self.comm.rank // P1)
         
         #: DOCUMENT ME
         x_slices = self.decompose(self.pdims[0], P1)
         y_slices = self.decompose(self.pdims[1], P2)
+
         # x_slices = [
         #     slice(i*self.pdims[0]//P1,
         #           (i+1)*self.pdims[0]//P1)
@@ -140,8 +141,8 @@ class SpectralGrid(object):
         # Get local ranks. Due to the communicator split, we have more "local" slices
         zy_rank = self.comm_zy.Get_rank()
         yx_rank = self.comm_yx.Get_rank()
-        self._local_x_slice = x_slices[zy_rank]
-        self._local_y_slice = y_slices[yx_rank]
+        self._local_x_slice = x_slices[yx_rank]
+        self._local_y_slice = y_slices[zy_rank]
 
         local_physical_slice = (
             self._local_x_slice,
@@ -193,8 +194,8 @@ class SpectralGrid(object):
 
         #: The slice of the global spectral mesh stored by this process
         # loal on comm_zy
-        self._local_ky_slice = ky_slices[zy_rank]
-        self._local_kz_slice = kz_slices[yx_rank]
+        self._local_ky_slice = ky_slices[yx_rank]
+        self._local_kz_slice = kz_slices[zy_rank]
 
         #if self.comm.rank==0:
         #    for s in ky_slices:
@@ -364,7 +365,7 @@ class SpectralGrid(object):
                     [ s1 - s.start, s.stop - s1 ],
                     [ s.start, s1 + aliased_size ],
                     ).Create_resized(0, self.pdims[1]*(self.pdims[2]//2+1)*16).Create_indexed(
-                        [ self._local_z_slice.stop - self._local_z_slice.start ],
+                        [ self._local_x_slice.stop - self._local_x_slice.start ],
                         [ 0 ]
                         ).Commit()
             for s in ky_slices
@@ -611,9 +612,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         disp = [0] * self.grid.comm_zy.size
 
 
-        #print('t1', t1.shape, 't2', t2.shape)
-        print(self.grid.comm.rank, self.grid.comm_zy.size, self.grid.comm_yx.size, counts, flush=True)
-        self.grid.comm_yx.Alltoallw(
+        self.grid.comm_zy.Alltoallw(
             [t1, counts, disp, self.grid._xy_pencils],
             [t2, counts, disp, self.grid._xkz_pencils]
             )
@@ -646,7 +645,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
 
         #print(self.grid.comm.rank, self.grid._xkz2_pencils, self.grid._kykz_pencils, flush=True)
 
-        self.grid.comm_yz.Alltoallw(
+        self.grid.comm_yx.Alltoallw(
             [t3, counts, disp, self.grid._xkz2_pencils],
             [t4, counts, disp, self.grid._kykz_pencils]
             )
@@ -845,10 +844,11 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         i1 = numpy.array([*range(0, N[1]//2+1), *range(-((N[1]-1)//2), 0)])
         s = numpy.zeros(
             self.shape[:-3]
-            + (self.grid.pdims[0],
+            + (self.grid.sdims[0], 
                self.grid._local_ky_slice.stop
-               - self.grid._local_ky_slice.start,
-               self.grid.sdims[2]//2+1),
+               - self.grid._local_ky_slice.start, 
+               self.grid._local_kz_slice.stop
+               - self.grid._local_kz_slice.start),
             dtype=complex
             )
         s[..., i0, :, :] = self
@@ -857,41 +857,56 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                 s[..., N[0]//2, :, :] *= 0.5
                 s[..., -(N[0]//2), :, :] = s[..., N[0]//2, :, :]
         t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
-#        t2 = numpy.zeros(
-#            self.shape[:-3]
-#            + (self.grid._local_z_slice.stop
-#               - self.grid._local_z_slice.start,
-#               self.grid.sdims[1],
-#               self.grid.pdims[2]//2+1),
-#            dtype=complex
-#            )
-        # Formally known as t25:
         t2 = numpy.zeros(
             self.shape[:-3]
-            + (self.grid._local_z_slice.stop
-               - self.grid._local_z_slice.start,
-               self.grid.pdims[1],
-               self.grid.pdims[2]//2+1),
+            + (self.grid._local_x_slice.stop
+               - self.grid._local_x_slice.start,
+               self.grid.sdims[1],
+               self.grid._local_kz_slice.stop
+               - self.grid._local_kz_slice.start),
             dtype=complex
             )
         count = numpy.prod(self.shape[:-3], dtype=int)
-        counts = [count] * self.grid.comm.size
-        displs = [0] * self.grid.comm.size
-        self.grid.comm.Alltoallw(
-            [t1, counts, displs, self.grid.slice2],
-            [t2, counts, displs, self.grid.slice1],
+        counts = [count] * self.grid.comm_yx.size
+        displs = [0] * self.grid.comm_yx.size
+        self.grid.comm_yx.Alltoallw(
+            [t1, counts, displs, self.grid._kykz_pencils],
+            [t2, counts, displs, self.grid._xkz2_pencils],
             )
-#        t25[..., i1, :] = t2
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[1] > N[1] and N[1] % 2 == 0:
                 t2[..., :, N[1]//2, :] *= 0.5
                 t2[..., :, -(N[1]//2), :] = t2[..., :, N[1]//2, :]
-        t3 = numpy.fft.irfft2(
+        t3 = numpy.ascontiguousarray(numpy.fft.ifft(
             t2,
-            s=self.grid.x.shape[2:],
-            axes=(-2, -1)
+            axis=-2
+            ))
+        t4 = numpy.zeros(
+            self.shape[:-3]
+            + (self.grid._local_x_slice.stop
+               - self.grid._local_x_slice.start,
+               self.grid._local_y_slice.stop
+               - self.grid._local_y_slice.start,
+               self.grid.pdims[2] // 2 + 1),
+            dtype=complex
+            )
+        count = numpy.prod(self.shape[:-3], dtype=int)
+        counts = [count] * self.grid.comm_zy.size
+        displs = [0] * self.grid.comm_zy.size
+        self.grid.comm_zy.Alltoallw(
+            [t3, counts, displs, self.grid._xkz_pencils],
+            [t4, counts, displs, self.grid._xy_pencils],
+            )
+        if self.grid._aliasing_strategy == 'mpi4py':
+            if M[1] > N[1] and N[1] % 2 == 0:
+                t4[..., :, N[1]//2, :] *= 0.5
+                t4[..., :, -(N[1]//2), :] = t4[..., :, N[1]//2, :]
+        t5 = numpy.fft.irfft(
+            t4,
+            n=self.grid.x.shape[3],
+            axis=-1
             )*numpy.prod(self.grid.pdims)
-        return PhysicalArray(self.grid, t3)
+        return PhysicalArray(self.grid, t5)
 
     def grad(self):
         """Return a new array containing the gradient of the data
@@ -926,16 +941,16 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             1j*numpy.cross(self.grid.k, self, axis=0),
             )
 
-    def norm(self):
+    def norm(self): #L2 norm squared
         """Return the :math:`L_2` norm of the data
         """
-        if (self.grid.x.shape[3] % 2 == 0
-                and self.grid.k.shape[3] == self.grid.x.shape[3]/2+1):
+        if (self.grid.x.shape[3] % 2 == 0 #need to use global sizing, someting like sdims or pdims
+                and self.grid.k.shape[3] == self.grid.x.shape[3]/2+1): #checking for aliasing
             n = self.grid.comm.reduce(
                 numpy.sum(
                     (self[..., 0]*numpy.conjugate(self[..., 0])).real
                     + 2*numpy.sum(
-                        (self[..., 1:-1]*numpy.conjugate(self[..., 1:-1])).real,
+                        (self[..., 1:-1]*numpy.conjugate(self[..., 1:-1])).real, #-1 isn't right anymore, only -1 in the last pencil in z
                         axis=-1
                         )
                     + (self[..., -1]*numpy.conjugate(self[..., -1])).real
