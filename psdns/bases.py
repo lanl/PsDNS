@@ -107,8 +107,8 @@ class SpectralGrid(object):
         self.comm_yx = self.comm.Split(self.comm.rank // P1)
         
         #: DOCUMENT ME
-        x_slices = self.decompose(self.pdims[0], P1)
-        y_slices = self.decompose(self.pdims[1], P2)
+        x_slices = self.decompose(self.pdims[0], P1, even=True)
+        y_slices = self.decompose(self.pdims[1], P2, even=True)
 
         # x_slices = [
         #     slice(i*self.pdims[0]//P1,
@@ -190,8 +190,14 @@ class SpectralGrid(object):
         #if self.comm.size % 2:
         #    raise ValueError("Number of MPI ranks must be even.")
         ky_slices = self.decompose(self.sdims[1], P1)
-        kz_slices = self.decompose(self.sdims[2] // 2 + 1, P2)
+        kz_slices = self.decompose(self.sdims[2] // 2 + 1, P2, even=True)
 
+        # if self.comm.rank == 0:
+        #     print(x_slices)
+        #     print(y_slices)
+        #     print(ky_slices)
+        #     print(kz_slices)
+        
         #: The slice of the global spectral mesh stored by this process
         # loal on comm_zy
         self._local_ky_slice = ky_slices[yx_rank]
@@ -345,7 +351,7 @@ class SpectralGrid(object):
             MPI.DOUBLE_COMPLEX.Create_subarray(
                 [self._local_x_slice.stop 
                  - self._local_x_slice.start,
-                 self.sdims[1],
+                 self.pdims[1],
                  self._local_kz_slice.stop
                  - self._local_kz_slice.start
                 ],
@@ -415,7 +421,7 @@ class SpectralGrid(object):
                 / numpy.where(self.k2 == 0, 1, self.k2))
 
     @staticmethod
-    def decompose(nmodes, ncpus, even=True):
+    def decompose(nmodes, ncpus, even=False):
         """Decompose *nmodes* across *ncpus*."""
         if even:
             return [
@@ -579,13 +585,6 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                  self._data,
                  axis=-1
                  )
-        if self.grid._aliasing_strategy == 'mpi4py':
-            if M[1] > N[1] and N[1] % 2 == 0:
-                t1[..., :, N[1]//2, :] = \
-                  t1[..., :, N[1]//2, :] + t1[..., :, -(N[1]//2), :]
-        elif self.grid._aliasing_strategy == 'truncate':
-            if M[1] > N[1] and N[1] % 2 == 0:
-                t1[..., :, N[1]//2, :] = 0
         t1 = numpy.ascontiguousarray(t1)
         t2 = numpy.zeros(
             t1.shape[:-3]
@@ -844,7 +843,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         i1 = numpy.array([*range(0, N[1]//2+1), *range(-((N[1]-1)//2), 0)])
         s = numpy.zeros(
             self.shape[:-3]
-            + (self.grid.sdims[0], 
+            + (self.grid.pdims[0], 
                self.grid._local_ky_slice.stop
                - self.grid._local_ky_slice.start, 
                self.grid._local_kz_slice.stop
@@ -857,11 +856,12 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                 s[..., N[0]//2, :, :] *= 0.5
                 s[..., -(N[0]//2), :, :] = s[..., N[0]//2, :, :]
         t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
+        #print(self.grid.comm.rank, "Completed first transform", flush=True)
         t2 = numpy.zeros(
             self.shape[:-3]
             + (self.grid._local_x_slice.stop
                - self.grid._local_x_slice.start,
-               self.grid.sdims[1],
+               self.grid.pdims[1],
                self.grid._local_kz_slice.stop
                - self.grid._local_kz_slice.start),
             dtype=complex
@@ -897,10 +897,6 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             [t3, counts, displs, self.grid._xkz_pencils],
             [t4, counts, displs, self.grid._xy_pencils],
             )
-        if self.grid._aliasing_strategy == 'mpi4py':
-            if M[1] > N[1] and N[1] % 2 == 0:
-                t4[..., :, N[1]//2, :] *= 0.5
-                t4[..., :, -(N[1]//2), :] = t4[..., :, N[1]//2, :]
         t5 = numpy.fft.irfft(
             t4,
             n=self.grid.x.shape[3],
