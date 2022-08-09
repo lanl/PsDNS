@@ -100,8 +100,9 @@ class SpectralGrid(object):
                 "see the manual for why you don't want to do this"
                 )
         #: DOCUMENT ME
-        P1 = 2 # CPUs in 1st direction (assigned)
-        P2 =self.comm.size // P1 # CPUs in 2nd direction
+        dims = MPI.Compute_dims(MPI.COMM_WORLD.size, (0,0)) # returns a balanced distribtion of processors
+        P1 = dims[0] # CPUs in 1st direction
+        P2 = dims[1] # CPUs in 2nd direction
         # Create two communicator groups (?) 
         self.comm_zy = self.comm.Split(self.comm.rank % P1)
         self.comm_yx = self.comm.Split(self.comm.rank // P1)
