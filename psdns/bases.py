@@ -194,6 +194,7 @@ class SpectralGrid(object):
         kz_slices = self.decompose(self.sdims[2] // 2 + 1, P2, even=True)
 
         # if self.comm.rank == 0:
+        #     print(P1, P2)
         #     print(x_slices)
         #     print(y_slices)
         #     print(ky_slices)
@@ -366,12 +367,12 @@ class SpectralGrid(object):
                 ).Commit()
             if s.stop <= s1 or s.start >= s1 or self.pdims[1] == self.sdims[1] else
             MPI.DOUBLE_COMPLEX.Create_indexed(
-                [ self.sdims[2]//2+1 ],
+                [ self._local_kz_slice.stop - self._local_kz_slice.start ],
                 [ 0 ],
-                ).Create_resized(0, (self.pdims[2]//2+1)*16).Create_indexed(
+                ).Create_resized(0, (self._local_kz_slice.stop - self._local_kz_slice.start)*16).Create_indexed(
                     [ s1 - s.start, s.stop - s1 ],
                     [ s.start, s1 + aliased_size ],
-                    ).Create_resized(0, self.pdims[1]*(self.pdims[2]//2+1)*16).Create_indexed(
+                    ).Create_resized(0, self.pdims[1]*(self._local_kz_slice.stop - self._local_kz_slice.start)*16).Create_indexed(
                         [ self._local_x_slice.stop - self._local_x_slice.start ],
                         [ 0 ]
                         ).Commit()
@@ -422,7 +423,7 @@ class SpectralGrid(object):
                 / numpy.where(self.k2 == 0, 1, self.k2))
 
     @staticmethod
-    def decompose(nmodes, ncpus, even=False):
+    def decompose(nmodes, ncpus, even=True):
         """Decompose *nmodes* across *ncpus*."""
         if even:
             return [
@@ -432,6 +433,8 @@ class SpectralGrid(object):
         else:
             # Note, this may be too much work.  Just divide ncpus in two, and then handle the specuial
             # case of ncpus == nmodes if necessary.  This is already suboptimal for large odd ncpus.
+            if ncpus == 1:
+                raise ValueError("Even decomposition is impossible across one processor")
             nmodes1 = nmodes // 2 + 1
             nmodes2 = ( nmodes - 1 ) // 2
             ncpus1 = ncpus * nmodes1 // nmodes
