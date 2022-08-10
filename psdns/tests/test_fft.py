@@ -353,7 +353,6 @@ class TestProperties(tests.TestCase):
                     numpy.asarray(s1.to_physical()+a*s2.to_physical())
                     )
 
-    @unittest.skip("Something is funny about norms.")
     def test_norm(self):
         """Spectral norm should match physical space norm.
         """
@@ -366,7 +365,6 @@ class TestProperties(tests.TestCase):
                         s.to_physical().norm()
                         )
 
-    @unittest.skip("Something is funny about norms.")
     def test_norm2(self):
         """Physical norm should match spectral space norm.
         """
@@ -385,7 +383,7 @@ class TestProperties(tests.TestCase):
         """Check magnitude (scaling) of physical norm"""
         for sdims, pdims in domains:
             with self.subTest(sdims=sdims, pdims=pdims):
-                p = random_physical_array(SpectralGrid(sdims, pdims))
+                p = PhysicalArray(SpectralGrid(sdims, pdims))
                 p[...] = numpy.cos(p.grid.x[0])
                 with self.rank_zero(p.grid.comm):
                     self.assertAlmostEqual(p.norm(), 0.5)

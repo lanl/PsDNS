@@ -821,7 +821,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
 
     def real(self):
         """Return a new array containing the real part of the data"""
-        return SpectralArray(self.grid, self._data.real)
+        return self._data.real
 
     def transpose(self, *indicies):
         """Returns a view of the array with axes transposed
@@ -944,29 +944,28 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     def norm(self): #L2 norm squared
         """Return the :math:`L_2` norm of the data
         """
-        if (self.grid.x.shape[3] % 2 == 0 #need to use global sizing, someting like sdims or pdims
-                and self.grid.k.shape[3] == self.grid.x.shape[3]/2+1): #checking for aliasing
-            n = self.grid.comm.reduce(
+        w = 2*numpy.ones(
+            self.grid._local_kz_slice.stop
+            - self.grid._local_kz_slice.start,
+            dtype=int
+            )
+
+        if self.grid._local_kz_slice.start == 0:
+            w[0] = 1
+        
+        if (self.grid.pdims[2] == self.grid.sdims[2]        # No aliasing
+            and self.grid.pdims[2] % 2 == 0                 # Even number of modes
+            and self.grid._local_kz_slice.stop == self.grid.sdims[2] // 2 + 1):
+            w[-1] = 1
+
+        return self.grid.comm.reduce(
                 numpy.sum(
-                    (self[..., 0]*numpy.conjugate(self[..., 0])).real
-                    + 2*numpy.sum(
-                        (self[..., 1:-1]*numpy.conjugate(self[..., 1:-1])).real, #-1 isn't right anymore, only -1 in the last pencil in z
+                    + numpy.sum(
+                        w*(self*numpy.conjugate(self)).real(),
                         axis=-1
                         )
-                    + (self[..., -1]*numpy.conjugate(self[..., -1])).real
                     )
                 )
-        else:
-            n = self.grid.comm.reduce(
-                numpy.sum(
-                    (self[..., 0]*numpy.conjugate(self[..., 0])).real
-                    + 2*numpy.sum(
-                        (self[..., 1:]*numpy.conjugate(self[..., 1:])).real,
-                        axis=-1
-                        )
-                    )
-                )
-        return n
 
     def set_mode(self, mode, val):
         """Set a mode based on global array indicies.
