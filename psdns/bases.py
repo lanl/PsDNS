@@ -769,15 +769,16 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         Return a MPI data type which represents the view of the local
         spectral data in a MPI data file.
         """
-        extents = list(self.grid.sdims)
-        subextents = list(self.grid.sdims)
-        extents[2] = subextents[2] = self.grid.sdims[2]//2+1
-        subextents[1] = self.grid._local_ky_slice.stop \
-            - self.grid._local_ky_slice.start
-        starts = len(extents) * [0]
-        starts[1] = self.grid._local_ky_slice.start
         return MPI.DOUBLE_COMPLEX.Create_subarray(
-            extents, subextents, starts
+            [ self.grid.sdims[0],
+              self.grid.sdims[1],
+              self.grid.sdims[2]//2+1 ],
+            [ self.grid.sdims[0],
+              self.grid._local_ky_slice.stop - self.grid._local_ky_slice.start,
+              self.grid._local_kz_slice.stop - self.grid._local_kz_slice.start ],
+            [ 0,
+              self.grid._local_ky_slice.start,
+              self.grid._local_kz_slice.start ]
             ).Commit()
 
     def checkpoint(self, filename):
