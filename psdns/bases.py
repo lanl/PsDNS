@@ -100,7 +100,7 @@ class SpectralGrid(object):
                 "see the manual for why you don't want to do this"
                 )
         #: DOCUMENT ME
-        dims = MPI.Compute_dims(MPI.COMM_WORLD.size, (0,0)) # returns a balanced distribtion of processors
+        dims = MPI.Compute_dims(self.comm.size, (0,0)) # returns a balanced distribtion of processors
         P1 = dims[0] # CPUs in 1st direction
         P2 = dims[1] # CPUs in 2nd direction
         # Create two communicator groups (?) 
@@ -610,7 +610,6 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         count = numpy.prod(self.shape[:-3], dtype=int)
         counts = [count] * self.grid.comm_zy.size
         disp = [0] * self.grid.comm_zy.size
-
 
         self.grid.comm_zy.Alltoallw(
             [t1, counts, disp, self.grid._xy_pencils],
