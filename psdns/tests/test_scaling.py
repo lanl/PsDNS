@@ -185,9 +185,9 @@ class TestStrongScaling(ScalingTest):
     #: consisting of the problem size, and the minimum and maximum
     #: number of processors (specified as powers of two) to run on.
     cases = [
-        (64, 0, 6),
-        (256, 3, 8),
-        (1024, 8, 10)
+        (64, 0, 12),
+        (256, 3, 12),
+        (1024, 8, 12)
         ]
 
     def test_strong_scaling_tgv(self):
