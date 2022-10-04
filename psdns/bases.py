@@ -18,9 +18,9 @@ indicies (rank-0 for scalars, rank-1 for vectors) and the last three
 for the spatial or wavenumber coordinate.
 
 For parallel runs, the mesh is decomposed across multiple MPI ranks.
-Currently, only a slab decomposition is supported.  The physical space
-mesh is decomposed along the first axis, and the spectral mesh along
-the second axis.  Grid information about the entire grid will be
+The code uses a pencil decomposition, where the physical space data is
+decomposed along the first two indicies, and the spectral mesh along
+the second and third.  Grid information about the entire grid will be
 referred to as *global*, whereas information about a specific rank is
 *local*.
 """
@@ -43,7 +43,7 @@ class SpectralGrid(object):
     """
     def __init__(
             self, sdims, pdims=None, box_size=2*numpy.pi,
-            aliasing_strategy='truncate',
+            cpu_dims=(0,0), aliasing_strategy='truncate',
             comm=MPI.COMM_WORLD
             ):
         r"""Return a new :class:`SpectralGrid` object.
@@ -64,11 +64,21 @@ class SpectralGrid(object):
 
             [ sdims[0], sdims[1], sdims[2]//2+1 ]
 
-        Also, keep in mind that the actually fast Fourier transforms are
+        Also, keep in mind that the actual fast Fourier transforms are
         performed on a padded grid of shape *pdims*.  FFT routines
         typically perform better when the length is a power of small
         primes, that consideration should be applied to the choice of
         *pdims*, *sdims* can be arbitrary as far as FFT performance.
+
+        The domain is decomposed into pencils.  By default, the code
+        attempts an optimal decomposition, but users can specify the
+        number of domains in each direction using the *cpu_dims*
+        parameter.  This is a 2-tuple of dimensions, with any
+        dimension set to zero to be computed automatically by the
+        code.  Note, the axes for the decomposition change as the FFT
+        transform progresses, so the optimal choice may not be obvious
+        (see :ref:`Computing Three-Dimensional FFTs with Distributed
+        Arrays` for a description of the domain decomposition).
 
         The default MPI communicator for the grid is ``COMM_WORLD``,
         but this can be changed by providing a communitcator to the
@@ -99,45 +109,18 @@ class SpectralGrid(object):
                 "Truncating to an even number of modes in y: "
                 "see the manual for why you don't want to do this"
                 )
-        #: DOCUMENT ME
-        dims = MPI.Compute_dims(self.comm.size, (0,0)) # returns a balanced distribtion of processors
-        P1 = dims[0] # CPUs in 1st direction
-        P2 = dims[1] # CPUs in 2nd direction
-        # Create two communicator groups (?) 
+        P1, P2 = MPI.Compute_dims(self.comm.size, cpu_dims)
+        if P1*P2 != self.comm.size:
+            raise ValueError(
+                "Domain decomposition does not match the number of available processors."
+                )
+        #: Communicator for swapping the z pencils to y pencils.
         self.comm_zy = self.comm.Split(self.comm.rank % P1)
+        #: Communicator for swapping the y pencils to x pencils.
         self.comm_yx = self.comm.Split(self.comm.rank // P1)
         
-        #: DOCUMENT ME
         x_slices = self.decompose(self.pdims[0], P1, even=True)
         y_slices = self.decompose(self.pdims[1], P2, even=True)
-
-        # x_slices = [
-        #     slice(i*self.pdims[0]//P1,
-        #           (i+1)*self.pdims[0]//P1)
-        #     for i in range(P1)
-        #     ]
-        # y_slices = [
-        #     slice(i*self.pdims[0]//P2,
-        #           (i+1)*self.pdims[0]//P2)
-        #     for i in range(P2)
-        #     ]
-        #if self.comm.rank==0:
-        #    for s in x_slices:
-        #        print('x', s)
-        #    for s in y_slices:
-        #        print('y', s)
-
-        #: A list, each element of which is a 3-tuple of
-        #: Python :class:`slice` objects describing the slice of the
-        #: global physical mesh stored on the n-th MPI rank
-        #self.physical_slices = [
-        #    (slice(i*self.pdims[0]//self.comm.size,
-        #           (i+1)*self.pdims[0]//self.comm.size),
-        #     slice(0, self.pdims[1]),
-        #     slice(0, self.pdims[2]))
-        #    for i in range(self.comm.size)
-        #    ]
-        #: The slice of the global physical mesh stored by this process
 
         # Get local ranks. Due to the communicator split, we have more "local" slices
         zy_rank = self.comm_zy.Get_rank()
@@ -151,65 +134,13 @@ class SpectralGrid(object):
             slice(0, self.pdims[2])
             )
         
-        #self.local_physical_slice = self.physical_slices[self.comm.rank]
-        #: A list, each element of which is a 3-tuple of
-        #: Python :class:`slice` objects describing the slice of the
-        #: global spectral mesh stored on the n-th MPI rank
-        #:
-        #: We require the number of MPI ranks to be even, so that we do
-        #: not have to deal with the case where a spectral slice includes
-        #: two discontinous subarrays, since the associated MPI datatype
-        #: is likely to be inefficient.
-        #:
-        #: The domain is decomposed into two parts, each using half of the
-        #: MPI ranks.  The first contain the zero mode and positive modes,
-        #: the second contains the negative modes.  This decomposition will
-        #: not be optimally efficient for certain cases, such as when
-        #: there are two ranks (one will have two more modes than the other),
-        #: or when the number of ranks is equal to the number of modes (the
-        #: decomposition will fail, whereas it should allocate two additional
-        #: ranks to the first half of the mode space).
-        
-        #self.spectral_slices = [
-        #    (slice(0, self.sdims[0]),
-        #     slice(i*self.sdims[1]//self.comm.size,
-        #           (i+1)*self.sdims[1]//self.comm.size),
-        #     slice(0, self.sdims[2]//2+1))
-        #    for i in range(self.comm.size)
-        #    ]
-        
-        # modified so that the lengths of the slices are in the same order as the dealias_slices
-        # currently only for odd sdims and even comm.size 
-        #q, r = divmod(self.sdims[1], self.comm.size)
-        #self.spectral_slices = [
-        #    (slice(0, self.sdims[0]),
-        #     slice(i*q + min(i,r), (i+1)*q + min(i+1,r)),
-        #     slice(0, self.sdims[2]//2+1))
-        #    for i in range(self.comm.size) 
-        #    ]
-
-        #if self.comm.size % 2:
-        #    raise ValueError("Number of MPI ranks must be even.")
         ky_slices = self.decompose(self.sdims[1], P1)
         kz_slices = self.decompose(self.sdims[2] // 2 + 1, P2, even=True)
-
-        # if self.comm.rank == 0:
-        #     print(P1, P2)
-        #     print(x_slices)
-        #     print(y_slices)
-        #     print(ky_slices)
-        #     print(kz_slices)
         
         #: The slice of the global spectral mesh stored by this process
-        # loal on comm_zy
+        #: loal on comm_zy
         self._local_ky_slice = ky_slices[yx_rank]
         self._local_kz_slice = kz_slices[zy_rank]
-
-        #if self.comm.rank==0:
-        #    for s in ky_slices:
-        #        print('ky', s)
-        #    for s in kz_slices:
-        #        print('kz', s)
 
         local_spectral_slice = (
             slice(0, self.sdims[0]),
@@ -234,8 +165,6 @@ class SpectralGrid(object):
             self.pdims[2],self.dx[2]/(2*numpy.pi)
             )[:self.sdims[2]//2+1]
         #: The local spectral space mesh (wavenumbers)
-        #print(self.comm.rank, local_spectral_slice, fftfreq0.shape, fftfreq1.shape, rfftfreq.shape)
-	
         self.k = numpy.array([
             fftfreq0[k[0]],
             fftfreq1[k[1]],
@@ -252,68 +181,10 @@ class SpectralGrid(object):
             )
         
         s1 = self.sdims[1] // 2 + 1
-        aliased_size = self.pdims[1] - self.sdims[1]        
-        #: Meshes are domain decomposed into slabs in the first dimension
-        #: in physical space, and the second dimension in spectral
-        #: space.  A three-dimensional FFT is performed by first
-        #: performing a one-dimensional FFT along the first axis, and
-        #: then using an MPI Alltoall communication to swap the slab
-        #: decomposition, and finally perfomring a two-dimensional FFT
-        #: along the remaing axes.  (That is for a spectral-to-physical
-        #: transformation.  The physical-to-spectral transformation is
-        #: done by reversing the procedure.)  :attr:`slice1` is a list,
-        #: each element of which is an MPI type describing the sub-array
-        #: on the current process that will be moved to the n-th rank
-        #: during the Alltoall communication.  :attr:`slice2` are the
-        #: corresponding receiving slices (i.e, the n-th element
-        #: describes the data to be received from the n-th rank to the
-        #: current rank).
-        #self.slice1 = [
-        #    MPI.DOUBLE_COMPLEX.Create_subarray(
-        #        [self._local_x_slice.stop
-        #         - self._local_x_slice.start,
-        #         self.pdims[1],
-        #         self.pdims[2]//2+1
-        #        ],
-        #        [self._local_x_slice.stop
-        #         - self._local_x_slice.start,
-        #         s.stop - s.start,
-        #         self.sdims[2]//2+1
-        #        ],
-        #        [0, s.start + (aliased_size if s.start >= s1 else 0), 0],
-        #        ).Commit()
-        #    for s in ky_slices
-        #    ]
-        #: A list of receiving data types for the slab decomposition
-        #: swap (see :attr:`slice1`).
-        #self.slice2 = [
-        #    MPI.DOUBLE_COMPLEX.Create_subarray(
-        #        [self.pdims[0],
-        #         self._local_ky_slice.stop
-        #         - self._local_ky_slice.start,
-        #         self.sdims[2]//2+1
-        #        ],
-        #        [p.stop - p.start,
-        #         self._local_ky_slice.stop
-        #         - self._local_ky_slice.start,
-        #         self.sdims[2]//2+1
-        #        ],
-        #        [p.start, 0, 0],
-        #        ).Commit()
-        #    for p in x_slices
-        #    ]
-
-
-        #for s in kz_slices:
-        #    print(self.comm.rank, [self._local_x_slice.stop 
-        #         - self._local_x_slice.start,
-        #         self._local_y_slice.stop 
-        #         - self._local_y_slice.start,
-        #         self.pdims[2]//2 + 1
-        #         ])
-
-        #: DOCUMENT ME
-        self._xy_pencils = [
+        aliased_size = self.pdims[1] - self.sdims[1]
+        #: A list of MPI data types decomposing z pencils for
+        #: transform to y pencils.  See :ref:`3d-fft`.
+        self._kz_pencils = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
                 [self._local_x_slice.stop 
                  - self._local_x_slice.start,
@@ -331,7 +202,9 @@ class SpectralGrid(object):
                 ).Commit()
             for s in kz_slices
             ]
-        self._xkz_pencils = [
+        #: A list of MPI data types decomposing y pencils for
+        #: transform from z pencils.  See :ref:`3d-fft`.
+        self._y_pencils = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
                 [self._local_x_slice.stop 
                  - self._local_x_slice.start,
@@ -349,7 +222,9 @@ class SpectralGrid(object):
                 ).Commit()
             for p in y_slices
             ]
-        self._xkz2_pencils = [
+        #: A list of MPI data types decomposing ky pencils for
+        #: transform to x pencils.  See :ref:`3d-fft`.
+        self._ky_pencils = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
                 [self._local_x_slice.stop 
                  - self._local_x_slice.start,
@@ -378,7 +253,9 @@ class SpectralGrid(object):
                         ).Commit()
             for s in ky_slices
             ]
-        self._kykz_pencils = [
+        #: A list of MPI data types decomposing x pencils for
+        #: transform from ky pencils.  See :ref:`3d-fft`.
+        self._x_pencils = [
             MPI.DOUBLE_COMPLEX.Create_subarray(
                 [self.pdims[0],
                  self._local_ky_slice.stop
@@ -575,16 +452,14 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """Transform to spectral space.
 
         This method returns a :class:`SpectralArray` containing the
-        Fourier transform of the data.
+        Fourier transform of the data.  For details of the algorithm,
+        see :ref:`Computing Three-Dimensional FFTs with Distributed
+        Arrays`.
         """
         # Index array which picks out retained modes in a complex transform
         N = self.grid.sdims
         M = self.grid.pdims
         i0 = numpy.array([*range(0, N[0]//2+1), *range(-((N[0]-1)//2), 0)])
-        i1 = numpy.array([*range(0, N[1]//2+1), *range(-((N[1]-1)//2), 0)])
-        # It would be more efficient to design MPI slices that fit
-        # the non-contiguous array returned by the slicing here.
-        #t1 = numpy.fft.rfft2(self._data)
         t1 = numpy.fft.rfft(
                  self._data,
                  axis=-1
@@ -615,8 +490,8 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         disp = [0] * self.grid.comm_zy.size
 
         self.grid.comm_zy.Alltoallw(
-            [t1, counts, disp, self.grid._xy_pencils],
-            [t2, counts, disp, self.grid._xkz_pencils]
+            [t1, counts, disp, self.grid._kz_pencils],
+            [t2, counts, disp, self.grid._y_pencils]
             )
         t3 = numpy.fft.fft(
                  t2,
@@ -643,13 +518,9 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         counts = [count] * self.grid.comm_yx.size
         disp = [0] * self.grid.comm_yx.size
 
-        #print('t3', t3.shape, 't4', t4.shape)
-
-        #print(self.grid.comm.rank, self.grid._xkz2_pencils, self.grid._kykz_pencils, flush=True)
-
         self.grid.comm_yx.Alltoallw(
-            [t3, counts, disp, self.grid._xkz2_pencils],
-            [t4, counts, disp, self.grid._kykz_pencils]
+            [t3, counts, disp, self.grid._ky_pencils],
+            [t4, counts, disp, self.grid._x_pencils]
             )
 
         t5 = numpy.fft.fft(
@@ -839,12 +710,13 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """Transform to physical space.
 
         This method returns a :class:`PhysicalArray` containing the
-        Fourier transform of the data.
+        Fourier transform of the data.  For details of the algorithm,
+        see :ref:`Computing Three-Dimensional FFTs with Distributed
+        Arrays`.
         """
         N = self.grid.sdims
         M = self.grid.pdims
         i0 = numpy.array([*range(0, N[0]//2+1), *range(-((N[0]-1)//2), 0)])
-        i1 = numpy.array([*range(0, N[1]//2+1), *range(-((N[1]-1)//2), 0)])
         s = numpy.zeros(
             self.shape[:-3]
             + (self.grid.pdims[0], 
@@ -860,7 +732,6 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                 s[..., N[0]//2, :, :] *= 0.5
                 s[..., -(N[0]//2), :, :] = s[..., N[0]//2, :, :]
         t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
-        #print(self.grid.comm.rank, "Completed first transform", flush=True)
         t2 = numpy.zeros(
             self.shape[:-3]
             + (self.grid._local_x_slice.stop
@@ -874,8 +745,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         counts = [count] * self.grid.comm_yx.size
         displs = [0] * self.grid.comm_yx.size
         self.grid.comm_yx.Alltoallw(
-            [t1, counts, displs, self.grid._kykz_pencils],
-            [t2, counts, displs, self.grid._xkz2_pencils],
+            [t1, counts, displs, self.grid._x_pencils],
+            [t2, counts, displs, self.grid._ky_pencils],
             )
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[1] > N[1] and N[1] % 2 == 0:
@@ -898,8 +769,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         counts = [count] * self.grid.comm_zy.size
         displs = [0] * self.grid.comm_zy.size
         self.grid.comm_zy.Alltoallw(
-            [t3, counts, displs, self.grid._xkz_pencils],
-            [t4, counts, displs, self.grid._xy_pencils],
+            [t3, counts, displs, self.grid._y_pencils],
+            [t4, counts, displs, self.grid._kz_pencils],
             )
         t5 = numpy.fft.irfft(
             t4,
@@ -941,8 +812,29 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             1j*numpy.cross(self.grid.k, self, axis=0),
             )
 
-    def norm(self): #L2 norm squared
-        """Return the :math:`L_2` norm of the data
+    def norm(self):
+        r"""Return the :math:`L_2` norm of the data
+
+        For a discrete Fourier transform, Parseval's Theorem states
+        that the square of the :math:`L_2` norm in physical space and
+        spectral space are the same, with the following weighting:
+
+        .. math::
+        
+            \sum_{i=1}^{N} f_{i}
+            = \hat{f}_{0} 
+            + 2 \sum_{i=0}^{\left(N-1\right)/2} \hat{f}_{i} + \hat{f}_{-i}
+
+        when :math:`N` is odd, and
+
+        .. math::
+
+            \sum_{i=1}^{N} f_{i}
+            = \hat{f}_{0} 
+            + 2 \sum_{i=0}^{\left(N-1\right)/2} \hat{f}_{i} + \hat{f}_{-i}
+            + \hat{f}_{N/2}
+
+        when :math:`N` is even.
         """
         w = 2*numpy.ones(
             self.grid._local_kz_slice.stop
@@ -953,8 +845,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         if self.grid._local_kz_slice.start == 0:
             w[0] = 1
         
-        if (self.grid.pdims[2] == self.grid.sdims[2]        # No aliasing
-            and self.grid.pdims[2] % 2 == 0                 # Even number of modes
+        if (self.grid.pdims[2] == self.grid.sdims[2]
+            and self.grid.pdims[2] % 2 == 0
             and self.grid._local_kz_slice.stop == self.grid.sdims[2] // 2 + 1):
             w[-1] = 1
 

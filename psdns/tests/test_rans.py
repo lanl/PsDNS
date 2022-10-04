@@ -84,7 +84,7 @@ class TestRANS(tests.TestCase):
             tfinal=21.0,
             equations=equations,
             ic=equations.exact(
-                SpectralGrid(sdims=[MPI.COMM_WORLD.size, 2**6, 1]), t0
+                SpectralGrid(sdims=[MPI.COMM_WORLD.size, 2**6, MPI.COMM_WORLD.size]), t0
                 ).to_spectral(),
         )
         solver.run()
