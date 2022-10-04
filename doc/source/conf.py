@@ -33,6 +33,7 @@ extensions = [
     'sphinx.ext.autosectionlabel',
     'sphinx.ext.intersphinx',
     'sphinx.ext.viewcode',
+    'matplotlib.sphinxext.plot_directive',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -86,6 +87,33 @@ intersphinx_mapping = {
     'numpy': ('https://numpy.org/doc/stable/', None),
     }
 
+plot_html_show_formats = False
+plot_html_show_source_link = False
+plot_pre_code = \
+r"""import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D 
+import numpy as np 
+
+fig = plt.figure() 
+ax = fig.add_subplot(111, projection='3d') 
+   
+plt.tight_layout()
+
+ax.set_frame_on(False)
+ax.xaxis.set_pane_color((0,0,0,0))
+ax.yaxis.set_pane_color((0,0,0,0))
+ax.zaxis.set_pane_color((0,0,0,0))
+ax.xaxis.line.set_color((0,0,0,0))
+ax.yaxis.line.set_color((0,0,0,0))
+ax.zaxis.line.set_color((0,0,0,0))
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_zticks([])
+ax.xaxis.labelpad = -16
+ax.yaxis.labelpad = -16
+ax.zaxis.labelpad = -16
+ax.grid(False)
+"""
 
 def cut_pep257_summary(app, what, name, obj, options, lines):
     """Remove summary lines from PEP 257 formatted docstrings.

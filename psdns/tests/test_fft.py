@@ -383,7 +383,7 @@ class TestProperties(tests.TestCase):
         """Check magnitude (scaling) of physical norm"""
         for sdims, pdims in domains:
             with self.subTest(sdims=sdims, pdims=pdims):
-                p = random_physical_array(SpectralGrid(sdims, pdims))
+                p = PhysicalArray(SpectralGrid(sdims, pdims))
                 p[...] = numpy.cos(p.grid.x[0])
                 with self.rank_zero(p.grid.comm):
                     self.assertAlmostEqual(p.norm(), 0.5)
