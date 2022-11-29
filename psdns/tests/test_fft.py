@@ -311,7 +311,10 @@ class TestProperties(tests.TestCase):
                 p = p.to_spectral().to_physical()
                 nptest.assert_allclose(
                     numpy.asarray(p.to_spectral().to_physical()),
-                    numpy.asarray(p)
+                    numpy.asarray(p),
+                    # Compare to round-off error
+                    rtol=0,
+                    atol=1e-14,
                     )
 
     def test_round_trip2(self):
@@ -322,7 +325,9 @@ class TestProperties(tests.TestCase):
                 s = random_spectral_array(SpectralGrid(sdims, pdims))
                 nptest.assert_allclose(
                     numpy.asarray(s.to_physical().to_spectral()),
-                    numpy.asarray(s)
+                    numpy.asarray(s),
+                    rtol=0,
+                    atol=1e-14,
                     )
 
     def test_linear1(self):
