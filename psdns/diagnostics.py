@@ -13,6 +13,8 @@ import sys
 
 import numpy
 
+import evtk
+
 from psdns import *
 
 
@@ -113,7 +115,7 @@ class StandardDiagnostics(Diagnostic):
         self.writer.writeheader()
 
     def divU(self, equation, uhat):
-        return uhat.div().norm()
+        return uhat[:3].div().norm()
         
     def tke(self, equations, uhat):
         """Compute the turbulent kinetic energy"""
@@ -447,3 +449,37 @@ class FieldDump(Diagnostic):
     def diagnostic(self, time, equations, uhat):
         """Write the solution fields in MPI format"""
         uhat.checkpoint("data{:04g}".format(time))
+
+
+class VTKDump(Diagnostic):
+    """VTK file dumps
+
+    This :class:`Diagnostic` class dumps full fields in physical space
+    using VTK format.  A list of the names to use for the fields must
+    be passed as *names*.  An optional *filename* pattern can be
+    passed, which will be formatted using Python string formatting
+    (:meth:`str.format`), with the value of the current timestep set
+    to *time*.
+
+    .. note::
+
+       :class:`VTKDump` uses the :mod:`evtk` module, which does not
+       work for parallel runs (multiple MPI ranks).
+    """
+    def __init__(self, names, filename="./phys{time:04g}", **kwargs):
+        if kwargs['grid'].comm.size != 1:
+            raise ValueError("VTKDump does not work with multiple MPI ranks.")
+        super().__init__(**kwargs)
+        self.filename = filename
+        self.names = names
+
+    def diagnostic(self, time, equations, uhat):
+        u = numpy.asarray(uhat.to_physical())
+        time *= 10
+        evtk.hl.gridToVTK(
+            self.filename.format(time=time),
+            uhat.grid.x[0],
+            uhat.grid.x[1],
+            uhat.grid.x[2],
+            pointData = dict(zip(self.names, u))
+            )
