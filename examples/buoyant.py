@@ -9,18 +9,46 @@ from psdns import *
 from psdns.equations.navier_stokes import NavierStokes
 import scipy
 
-class Buoyant(NavierStokes):
-    def __init__(self, Sc=1, **kwargs):
-        """Return a Navier-Stokes equation object.
+class Boussinesq(NavierStokes):
+    """The Navier-Stokes equation with Boussinesq approximation for buoyancy.
 
-        Intantiating returns a Navier-Stokes equation object with
-        Reynolds number *Re*.
+    The incompressible Navier-Stokes equations, with a scalar
+    transport equation and the Boussinesq approximation for buoyancy
+    are:
+
+    .. math::
+
+        u_{i,i} & = 0 \\
+        u_{i,t} + u_{j} u_{i,j} 
+        & = -p_{,i} + \frac{1}{\text{Re}} u_{i,jj} +cg_{i} \\
+        c_{,t} + u_{j}c_{,j} & = \frac{\text{Sc}}{\text{Re}} c_{,jj}
+    """
+    def __init__(self, Sc=1, **kwargs):
+        """Return a Boussinesq equation object.
+
+        Intantiating returns a Boussinsesq equation object with
+        Reynolds number *Re* and Schmidt number *Sc*.
         """
         super().__init__(**kwargs)
 
         self.Sc = Sc
 
     def rhs(self, uhat):
+        """Compute the Boussinesq right hand side.
+
+        The numerical implementation is the same as for
+        :meth:`psdns.equations.navier_stokes.NavierStokes.rhs` execpt
+        for the additional bouyancy term.  As a result the momentum
+        equation becomes
+
+        .. math::
+
+            \left(
+              \frac{\partial}{\partial t} + \nu k^{2}
+            \right) \hat{u}_{i}
+            & = \left( \frac{k_{i}k_{j}}{k^{2}} - \delta_{ij} \right)
+            \left( \widehat{u_{k}u_{j,k}} - \hat{c} g_{j} \right)
+        """
         u = uhat[:3].to_physical()
         vorticity = uhat[:3].curl().to_physical()
         nl = numpy.cross(u, vorticity, axis=0)
@@ -57,7 +85,7 @@ grid = SpectralGrid(
     pdims=[3*2**4, 3*2**4, 3*2**5],
     box_size=[2*numpy.pi, 2*numpy.pi, 8*numpy.pi]
     )
-equations = Buoyant(Re=400)
+equations = Boussinesq(Re=400)
 
 solver = RungeKutta(
     dt=0.01,

@@ -19,7 +19,7 @@ class NavierStokes(object):
     def __init__(self, Re, **kwargs):
         """Return a Navier-Stokes equation object.
 
-        Intantiating returns a Navier-Stokes equation object with
+        Instantiating returns a Navier-Stokes equation object with
         Reynolds number *Re*.
         """
         super().__init__(**kwargs)
