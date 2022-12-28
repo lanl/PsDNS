@@ -185,9 +185,9 @@ class TestStrongScaling(ScalingTest):
     #: consisting of the problem size, and the minimum and maximum
     #: number of processors (specified as powers of two) to run on.
     cases = [
-        (64, 0, 6),
-        (256, 3, 8),
-        (1024, 8, 10)
+        (64, 0, 12),
+        (256, 3, 12),
+        (1024, 8, 12)
         ]
 
     def test_strong_scaling_tgv(self):
@@ -254,6 +254,13 @@ class TestStrongScaling(ScalingTest):
                     fig.suptitle(cpu_description)
                     fig.tight_layout()
 
+                    print("============", "===============", "==============")
+                    print("Problem size", "Number of tasks", "Total CPU Time")
+                    print("============", "===============", "==============")
+                    for ncpu, time in zip(ncpus, total_walltimes):
+                        print("{:12d}".format(N), "{:15g}".format(ncpu), "{:14g}".format(time))
+                    print("============", "===============", "==============")
+
 
 @unittest.skipIf(
     MPI.COMM_WORLD.size < 8,
@@ -303,7 +310,7 @@ class TestWeakScaling(ScalingTest):
             2**n for n in range(13)
             if 2**n <= MPI.COMM_WORLD.size
             ]
-        size = [int(2**6*numpy.cbrt(ncpu)) for ncpu in ncpus]
+        sizes = [int(2**6*numpy.cbrt(ncpu)) for ncpu in ncpus]
         grids = (
             SpectralGrid(
                 n,

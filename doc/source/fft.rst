@@ -358,3 +358,328 @@ that both codes produce the same results with this setting.  Note that
 this approach is effectively a filter, which means that transforming
 from spectral to physical and back to spectral will not return the
 original array with this setting.
+
+.. _3d-fft:
+
+Computing Three-Dimensional FFTs with Distributed Arrays
+--------------------------------------------------------
+
+This is how the 3-d FFTs are performed using distributed arrays.  The
+figures in the following example show a :math:`16^3` array in physical
+space (:attr:`~psdns.bases.SpectralGrid.pdims` of 16).  The three axes
+of the array will be referred to as :math:`x`, :math:`y`, and
+:math:`z`.  The data will be truncated to :math:`11^3` in spectral
+space for anti-aliasing (:attr:`~psdns.bases.SpectralGrid.sdims` of
+11).
+
+The physical space representation is stored in a
+:class:`~psdns.bases.PhysicalArray` object, as shown in
+:numref:`phys-array`.  In physical space the data is divided into
+pencils with ``P1`` divisions in :math:`x` and ``P2`` divisions in
+:math:`y`.  So, in the example, ``P1=3`` and ``P2=2``, for a total of
+6 MPI ranks.  Which data is on which rank is shown using the colors in
+the figures.
+
+.. Note, preferred option would be to use the plot directive to create
+   figures directly, but it does not work properly with
+   cross-referencing, so we write the figures to a file and then use a
+   figure direective, instead.
+
+.. plot::
+   :nofigs:
+	     
+   filled = np.ones([18, 17, 16])
+   colors = np.zeros(filled.shape + (3,))
+
+   filled[5,:,:] = 0 
+   filled[11,:,:] = 0 
+   filled[:,8,:] = 0
+
+   colors[:5,:8,:,:] = (1.0, 0.0, 0.0)
+   colors[6:11,:8,:,:] = (0.0, 0.5, 0.0)
+   colors[11:,:8,:,:] = (0.0, 0.0, 1.0)
+   colors[:5,9:,:,:] = (0.0, 0.75, 0.75)
+   colors[6:11,9:,:,:] = (0.75, 0.0, 0.75)
+   colors[11:,9:,:,:] = (0.75, 0.75, 0.0)
+
+   ax.voxels(filled, facecolors=colors, edgecolors='grey')
+   ax.set_xlabel("x\n(P_1 divisions)") 
+   ax.set_ylabel("y\n(P_2 divisions)") 
+   ax.set_zlabel("z")
+
+   plt.savefig("phys-array.png")
+
+.. _phys-array:
+
+.. figure:: phys-array.png
+   :scale: 50%
+   
+   Physical space array.     
+
+First, the data is fast-Fourier transformed in :math:`z`.  This
+results in an array that is shorter along this axis, since, for the
+real-to-complex transform, the data is Hermitian symmetric, and the
+negative modes are not retained.
+
+.. plot::
+   :nofigs:
+	     
+   filled = np.ones([18, 17, 11])
+   colors = np.zeros(filled.shape + (3,))
+
+   filled[5,:,:] = 0
+   filled[11,:,:] = 0
+   filled[:,8,:] = 0 
+   filled[:,:,3] = 0 
+   filled[:,:,7] = 0 
+
+   colors[:5,:8,:,:] = (1.0, 0.0, 0.0)
+   colors[6:11,:8,:,:] = (0.0, 0.5, 0.0)
+   colors[11:,:8,:,:] = (0.0, 0.0, 1.0)
+   colors[:5,9:,:,:] = (0.0, 0.75, 0.75)
+   colors[6:11,9:,:,:] = (0.75, 0.0, 0.75)
+   colors[11:,9:,:,:] = (0.75, 0.75, 0.0)
+
+   colors[:,:,8:,:] *= 0.5
+
+   ax.voxels(filled, facecolors=colors, edgecolors='grey') 
+   ax.set_xlabel("x\n(P_1 chunks)") 
+   ax.set_ylabel("y\n(P_2 chunks)") 
+   ax.set_zlabel("kz")
+
+   plt.savefig("fft-z.png")
+
+.. _fft-z-array:
+
+.. figure:: fft-z.png
+   :scale: 50%
+
+   After FFT in z-direction 
+
+In order to transform in :math:`y`, the data must be shuffled between
+MPI ranks, so that each rank now has a pencil in :math:`y`.  This is
+done using MPI all-to-all communications.  Note that the division of
+the data :math:`x` does not change.  This means we use a separate
+communicator for each division in the first axis.  The communicators
+:attr:`~psdns.bases.SpectralGrid.comm_zy` is used for swapping from
+:math:`z` to :math:`y` pencils.
+
+Each :math:`z` pencil is divided into chunks in the :math:`z`
+direction, as shown in figure :numref:`fft-z-array`.  Each chunk is
+sent to a different MPI rank.  For the dealiasing, there is an extra
+chunk (shown in darker color in the figure) that needs to be truncated.
+
+.. plot::
+   :nofigs:
+
+   filled = np.ones([18, 17, 7])
+   colors = np.zeros(filled.shape + (3,))
+
+   filled[5,:,:] = 0
+   filled[11,:,:] = 0
+   filled[:,8,:] = 0 
+   filled[:,:,3] = 0 
+
+   colors[:5,:,:3,:] = (1.0, 0.0, 0.0)
+   colors[6:11,:,:3,:] = (0.0, 0.5, 0.0)
+   colors[11:,:,:3,:] = (0.0, 0.0, 1.0)
+   colors[:5,:,4:,:] = (0.0, 0.75, 0.75)
+   colors[6:11,:,4:,:] = (0.75, 0.0, 0.75)
+   colors[11:,:,4:,:] = (0.75, 0.75, 0.0)
+   
+   ax.voxels(filled, facecolors=colors, edgecolors='grey') 
+   ax.set_xlabel("x\n(P_1 chunks)") 
+   ax.set_ylabel("y") 
+   ax.set_zlabel("kz\n(P_2 chunks)")
+   
+   plt.savefig("alltoall-zy.png")
+
+.. _alltoall-zy:
+
+.. figure:: alltoall-zy.png
+   :scale: 50%
+
+   After Alltoall
+
+After the first all-to-all communication, we need the data arranged as
+shown in figure :numref:`alltoall-zy`.  Note that the data in the
+darker region is not communicated.  Rather than packing the data into
+temporary arrays, with the associated additional copy operations, in
+order to remove the dealiasing region, we use the custom
+``MPI_DATATYPE`` feature to create data types for each of the sub
+array chunks that need to be communicated.  The chunks in the source
+array (figure :numref:`fft-z-array`) are in
+:attr:`~psdns.bases.SpectralGrid._xy_pencils`, and in the destination
+array (figure :numref:`alltoall-zy`) are in
+:attr:`~psdns.bases.SpectralGrid._xkz_pencils`.
+
+Once the data has been rearranged into :math:`y` pencils, we can
+perform the FFT in the :math:`y` direction.  Again, there is a portion
+of the array that contains the modes which will be truncated for
+dealiasing (shaded region in :numref:`fft-y`), but this time the
+dealiasing region is in the middle of the array.
+
+.. plot::
+   :nofigs:
+
+   filled = np.ones([18, 18, 7])
+   colors = np.zeros(filled.shape + (3,))
+
+   filled[5,:,:] = 0
+   filled[11,:,:] = 0
+   filled[:,3,:] = 0 
+   filled[:,-4,:] = 0 
+   filled[:,:,3] = 0 
+
+   colors[:5,:,:3,:] = (1.0, 0.0, 0.0)
+   colors[6:11,:,:3,:] = (0.0, 0.5, 0.0)
+   colors[11:,:,:3,:] = (0.0, 0.0, 1.0)
+   colors[:5,:,4:,:] = (0.0, 0.75, 0.75)
+   colors[6:11,:,4:,:] = (0.75, 0.0, 0.75)
+   colors[11:,:,4:,:] = (0.75, 0.75, 0.0)
+   
+   colors[:,6:-5,:,:] *= 0.5 
+   
+   ax.voxels(filled, facecolors=colors, edgecolors='grey') 
+   ax.set_xlabel("x\n(P_1 chunks)") 
+   ax.set_ylabel("ky") 
+   ax.set_zlabel("kz\n(P_2 chunks)")
+   
+   plt.savefig("fft-y.png")
+
+.. _fft-y:
+
+.. figure:: fft-y.png
+   :scale: 50%
+
+   After FFT in the y-direction
+
+The second all-to-all changes the :math:`y` pencils into :math:`x`
+pencils, with the data arranged as in figure :numref:`alltoall-yx`.
+Some care must be taken in constructing the MPI data types for the
+non-contiguous chunk containing the dealiasing region.  (Note, with a
+judicious choice of ``P1`` and ``pdims[1]``, we can avoid having a
+non-contigous chunk, however, the code supports the general case.)  It
+is important to make sure that not only the shape of the sub-regions
+match between source and destination arrays, but also the layout
+within each sub-region.
+
+The non-contiguous datatypes are all in the source array (figure
+:numref:`fft-y`), and are stored in
+:attr:`~psdns.bases.SpectralGrid._xkz2_pencils`.  The datatypes for
+the destination array (figure :numref:`alltoall-yx`) are in
+:attr:`~psdns.bases.SpectralGrid._kykz_pencils`.
+
+.. plot::
+   :nofigs:
+
+   filled = np.ones([18, 11, 7])
+   colors = np.zeros(filled.shape + (3,))
+
+   filled[5,:,:] = 0
+   filled[11,:,:] = 0
+   filled[:,3,:] = 0 
+   filled[:,-4,:] = 0 
+   filled[:,:,3] = 0 
+
+   colors[:,:3,:3,:] = (1.0, 0.0, 0.0)
+   colors[:,3:-4,:3,:] = (0.0, 0.5, 0.0)
+   colors[:,-4:,:3,:] = (0.0, 0.0, 1.0)
+   colors[:,:3,4:,:] = (0.0, 0.75, 0.75)
+   colors[:,3:-4,4:,:] = (0.75, 0.0, 0.75)
+   colors[:,-4:,4:,:] = (0.75, 0.75, 0.0)
+   
+   ax.voxels(filled, facecolors=colors, edgecolors='grey') 
+   ax.set_xlabel("x") 
+   ax.set_ylabel("ky\n(P_1 chunks)") 
+   ax.set_zlabel("kz\n(P_2 chunks)")
+   
+   plt.savefig("alltoall-yx.png")
+
+.. _alltoall-yx:
+
+.. figure:: alltoall-yx.png
+   :scale: 50%
+
+   After Alltoall
+
+Now we can perform the final FFT, in the :math:`x` direction.  The
+result again has a region that is truncated for dealiasing (figure
+:numref:`fft-x`).
+
+.. plot::
+   :nofigs:
+
+   filled = np.ones([16, 11, 7])
+   colors = np.zeros(filled.shape + (3,))
+
+   filled[:,3,:] = 0 
+   filled[:,-4,:] = 0 
+   filled[:,:,3] = 0 
+
+   colors[:,:3,:3,:] = (1.0, 0.0, 0.0)
+   colors[:,3:-4,:3,:] = (0.0, 0.5, 0.0)
+   colors[:,-4:,:3,:] = (0.0, 0.0, 1.0)
+   colors[:,:3,4:,:] = (0.0, 0.75, 0.75)
+   colors[:,3:-4,4:,:] = (0.75, 0.0, 0.75)
+   colors[:,-4:,4:,:] = (0.75, 0.75, 0.0)
+
+   colors[6:-5,:,:,:] *= 0.5 
+   
+   ax.voxels(filled, facecolors=colors, edgecolors='grey') 
+   ax.set_xlabel("kx") 
+   ax.set_ylabel("ky\n(P_1 chunks)") 
+   ax.set_zlabel("kz\n(P_2 chunks)")
+   
+   plt.savefig("fft-x.png")
+
+.. _fft-x:
+
+.. figure:: fft-x.png
+   :scale: 50%
+
+   After FFT in the x-direction
+
+Since there is no further MPI communication, the final dealiasing does
+require an array copy, and the result is returned as a
+:class:`~psdns.bases.SpectralArray`, stored as :math:`x` pencils
+distributed in the :math:`y` and :math:`z` directions, as shown in
+figure :numref:`spec-array`.
+
+.. plot::
+   :nofigs:
+
+   filled = np.ones([11, 11, 7])
+   colors = np.zeros(filled.shape + (3,))
+
+   filled[:,3,:] = 0 
+   filled[:,-4,:] = 0 
+   filled[:,:,3] = 0 
+
+   colors[:,:3,:3,:] = (1.0, 0.0, 0.0)
+   colors[:,3:-4,:3,:] = (0.0, 0.5, 0.0)
+   colors[:,-4:,:3,:] = (0.0, 0.0, 1.0)
+   colors[:,:3,4:,:] = (0.0, 0.75, 0.75)
+   colors[:,3:-4,4:,:] = (0.75, 0.0, 0.75)
+   colors[:,-4:,4:,:] = (0.75, 0.75, 0.0)
+
+   ax.voxels(filled, facecolors=colors, edgecolors='grey') 
+   ax.set_xlabel("kx") 
+   ax.set_ylabel("ky\n(P_1 chunks)") 
+   ax.set_zlabel("kz\n(P_2 chunks)")
+   
+   plt.savefig("spec-array.png")
+
+.. _spec-array:
+
+.. figure:: spec-array.png
+   :scale: 50%
+
+   Spectral space array.
+
+This is the procedure for transforming from a
+:class:`~psdns.bases.PhysicalArray` to a
+:class:`~psdns.bases.SpectralArray` using the
+:meth:`~psdns.bases.PhysicalArray.to_spectral` method.  The
+:meth:`~psdns.bases.SpectralArray.to_physical`, which goes the other
+way, does exactly the same thing, except in the reverse order.

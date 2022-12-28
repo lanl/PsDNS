@@ -44,8 +44,12 @@ import numpy
 from numpy import testing as nptest
 
 from mpi4py import MPI
-from mpi4py_fft import PFFT, newDistArray
-
+try:
+    from mpi4py_fft import PFFT, newDistArray
+    mpi4py_fft_loaded = True
+except:
+    mpi4py_fft_loaded = False
+    
 from psdns import *
 
 #: :meta hide-value:
@@ -379,7 +383,7 @@ class TestProperties(tests.TestCase):
         """Check magnitude (scaling) of physical norm"""
         for sdims, pdims in domains:
             with self.subTest(sdims=sdims, pdims=pdims):
-                p = random_physical_array(SpectralGrid(sdims, pdims))
+                p = PhysicalArray(SpectralGrid(sdims, pdims))
                 p[...] = numpy.cos(p.grid.x[0])
                 with self.rank_zero(p.grid.comm):
                     self.assertAlmostEqual(p.norm(), 0.5)
@@ -432,6 +436,10 @@ class TestProperties(tests.TestCase):
 @unittest.skipIf(
     MPI.COMM_WORLD.size != 1,
     "Test may fail if array subsizes don't match (see documentation)"
+    )
+@unittest.skipIf(
+    not mpi4py_fft_loaded,
+    "MPI4PyFFT library is not available"
     )
 class TestMPI4PyFFT(tests.TestCase):
     """Test that our transforms return the same results as mpi4py-fft.

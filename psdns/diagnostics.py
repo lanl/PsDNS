@@ -114,6 +114,9 @@ class StandardDiagnostics(Diagnostic):
             )
         self.writer.writeheader()
 
+    def divU(self, equation, uhat):
+        return uhat.div().norm()
+        
     def tke(self, equations, uhat):
         """Compute the turbulent kinetic energy"""
         u2 = uhat[:3].norm()
