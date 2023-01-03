@@ -1,6 +1,7 @@
 import warnings
 
 import numpy
+import scipy.special
 
 from psdns import *
 
@@ -130,6 +131,68 @@ class NavierStokes(object):
         s._data = numpy.ascontiguousarray(s._data)
         return s
 
+    @staticmethod
+    def mansour(k, q2, sigma, kp):
+        r"""Initial energy spectrom of [Mansour1994]_.
+
+        Computes the initial energy spectrum of [Mansour1994]_, which is
+
+        .. math::
+
+            E(\kappa) 
+            = \frac{q^2}{2A} \frac{\kappa^\sigma}{\kappa_p^{\sigma+1}}
+            \exp \left( 
+              - \frac{\sigma}{2} \left( \frac{\kappa}{\kappa_p} \right)^2
+            \right)
+        """
+        A = ( 2 ** ( (sigma+1) / 2 ) * scipy.special.gamma( (sigma+1) / 2)
+              / sigma ** ( (sigma+1) / 2 ) )
+        A = numpy.sqrt(numpy.pi)/4
+        return ( q2 / ( 2 * A ) * k ** sigma / ( kp ** (sigma+1) )
+            * numpy.exp( - sigma / 2 * ( k / kp ) ** 2 ) )
+
+    def rogallo(self, grid, energy=mansour,
+                params={'q2':3, 'sigma':2, 'kp':25}):
+        """Initialize with a specified spectrum and random phases.
+
+        Return a :class:`~psdns.bases.SpectralArray` with
+        ``shape=(3,)``, containing a velocity field on *grid* that
+        satisfies continuity, has a specified *energy* spectrum, and
+        random phases.
+
+        The spectrum is specified as a function *energy*, which takes as
+        arguments a wavenumber *k* and optional additional parameters
+        passed as a dictionary *params*.  The default value for the
+        *energy* function is the initial spectrum of [Mansour1994]_, with
+        the *params* set for the case in their second figure.
+
+        The algorithm for creating a field with the specified properties
+        is that of [Rogallo1981]_.  Note that there is a missing square
+        root and factor of two in [Mansour1994]_ in the equations for
+        :math:`\alpha,\beta`; coefficient is
+
+        .. math::
+
+            \left( \frac{E(\kappa)}{2 \pi \kappa^2} \right)^{1/2}
+        """
+        u = SpectralArray(grid, (3,))
+        k = u.grid.k
+        kmag = numpy.sqrt(u.grid.k2)
+        k12 = numpy.sqrt(k[0]**2+k[1]**2)
+
+        phi = 2*numpy.pi*numpy.random.random(k.shape[1:])
+        theta1 = 2*numpy.pi*numpy.random.random(k.shape[1:])
+        theta2 = 2*numpy.pi*numpy.random.random(k.shape[1:])
+        alpha = numpy.exp(1j*theta1)*numpy.cos(phi)
+        beta = numpy.exp(1j*theta2)*numpy.sin(phi)
+
+        u[0] = numpy.where(k12 == 0, alpha, (alpha*kmag*k[1] + beta*k[0]*k[2])/(kmag*k12))
+        u[1] = numpy.where(k12 == 0, beta, (- alpha*kmag*k[0] + beta*k[1]*k[2])/(kmag*k12))
+        u[2] = numpy.where(k12 == 0, 0, -beta*k12/kmag)
+        u *= numpy.sqrt(energy(kmag, **params)/(2*numpy.pi*u.grid.k2))
+        u[:,0,0,0] = 0
+
+        return u
 
 class SimplifiedSmagorinsky(NavierStokes):
     r"""A simplified Smagorinsky-type model.
@@ -148,7 +211,7 @@ class SimplifiedSmagorinsky(NavierStokes):
 
     .. math::
 
-    \nu_T = (C_S \Delta)^2 \sqrt{<\omega_i \omega_i>}
+        \nu_T = (C_S \Delta)^2 \sqrt{<\omega_i \omega_i>}
 
     where the brackets are a spatial average over the entire periodic
     box.
