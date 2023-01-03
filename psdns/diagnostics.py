@@ -141,7 +141,7 @@ class StandardDiagnostics(Diagnostic):
         enstrophy = [(1j*uhat.grid.k[i]*uhat[j]).norm()
                      for i in range(3) for j in range(3)]
         if uhat.grid.comm.rank == 0:
-            return 2*equations.nu*sum(enstrophy)
+            return equations.nu*sum(enstrophy)
 
     def urms(self, equations, uhat):
         """Compute <uu> velocity fluctuations"""
@@ -411,18 +411,18 @@ class Spectra(Diagnostic):
         E(k)
         = \iint_{|\boldsymbol{k}|=k} \Phi_{ii}(\boldsymbol{k}) dS
     """
-    def integrate_shell(self, u, dk):
-        nbins = int(u.grid.kmax/dk)+1
+    def integrate_shell(self, u, dk, grid):
+        nbins = int(grid.kmax/dk)+1
         spectrum = numpy.zeros([nbins])
         ispectrum = numpy.zeros([nbins], dtype=int)
-        for k, v in numpy.nditer([u.grid.kmag, u]):
+        for k, v in numpy.nditer([grid.kmag, u]):
             spectrum[int(k/dk)] += v
             ispectrum[int(k/dk)] += 1
         k = numpy.arange(nbins)*dk
-        spectrum = u.grid.comm.reduce(spectrum)
-        ispectrum = u.grid.comm.reduce(ispectrum)
-        if u.grid.comm.rank == 0:
-            spectrum *= 4*numpy.pi*k**2/ispectrum
+        spectrum = grid.comm.reduce(spectrum)
+        ispectrum = grid.comm.reduce(ispectrum)
+        if grid.comm.rank == 0:
+            spectrum *= 4*numpy.pi*k**2/(ispectrum/3)
         return k, spectrum
         
     def diagnostic(self, time, equations, uhat):
@@ -434,8 +434,9 @@ class Spectra(Diagnostic):
         surface area.
         """
         k, spectrum = self.integrate_shell(
-            (uhat[:3]*uhat[:3].conjugate()).real(),
+            (uhat[:3]*uhat[:3].conjugate()).real/2,
             1,
+            uhat.grid
             )
         if uhat.grid.comm.rank == 0:
             for i, s in zip(k, spectrum):
