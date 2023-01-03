@@ -690,8 +690,18 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """Return a new array containing the complex conjugate of the data"""
         return SpectralArray(self.grid, self._data.conjugate())
 
+    @property
     def real(self):
-        """Return a new array containing the real part of the data"""
+        """Return a new array containing the real part of the data
+
+        Return a new array containing the real part of the data.
+
+        .. note::
+
+            The return value is an :class:`numpy.ndarray`, not a
+            :class:`SpectralArray`, because a :class:`SpectralArray` with
+            real data does not make sense.
+        """
         return self._data.real
 
     def transpose(self, *indicies):
@@ -853,7 +863,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         return self.grid.comm.reduce(
                 numpy.sum(
                     + numpy.sum(
-                        w*(self*numpy.conjugate(self)).real(),
+                        w*(self*numpy.conjugate(self)).real,
                         axis=-1
                         )
                     )
