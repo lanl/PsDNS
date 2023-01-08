@@ -11,9 +11,14 @@ library diagnostics to use.
 import csv
 import sys
 
-import numpy
+try:
+    import evtk
+except:
+    has_evtk = False
 
-import evtk
+from mpi4py import MPI
+
+import numpy
 
 from psdns import *
 
@@ -116,7 +121,15 @@ class StandardDiagnostics(Diagnostic):
 
     def divU(self, equation, uhat):
         return uhat[:3].div().norm()
-        
+
+    def cmax(self, equations, uhat):
+        cmax = uhat.grid.comm.reduce(
+            numpy.amax(uhat[3].to_physical()),
+            MPI.MAX,
+            )
+        if uhat.grid.comm.rank == 0:
+            return cmax
+    
     def tke(self, equations, uhat):
         """Compute the turbulent kinetic energy"""
         u2 = uhat[:3].norm()
@@ -468,6 +481,8 @@ class VTKDump(Diagnostic):
        work for parallel runs (multiple MPI ranks).
     """
     def __init__(self, names, filename="./phys{time:04g}", **kwargs):
+        if not has_evtk:
+            raise RuntimeError("evtk package is not available.")
         if kwargs['grid'].comm.size != 1:
             raise ValueError("VTKDump does not work with multiple MPI ranks.")
         super().__init__(**kwargs)

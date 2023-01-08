@@ -145,9 +145,8 @@ class NavierStokes(object):
               - \frac{\sigma}{2} \left( \frac{\kappa}{\kappa_p} \right)^2
             \right)
         """
-        A = ( 2 ** ( (sigma+1) / 2 ) * scipy.special.gamma( (sigma+1) / 2)
+        A = ( 2 ** ( (sigma-1) / 2 ) * scipy.special.gamma( (sigma+1) / 2)
               / sigma ** ( (sigma+1) / 2 ) )
-        A = numpy.sqrt(numpy.pi)/4
         return ( q2 / ( 2 * A ) * k ** sigma / ( kp ** (sigma+1) )
             * numpy.exp( - sigma / 2 * ( k / kp ) ** 2 ) )
 
