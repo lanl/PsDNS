@@ -25,12 +25,12 @@ referred to as *global*, whereas information about a specific rank is
 *local*.
 """
 from functools import cached_property
+import textwrap
 import warnings
 
 import numpy
 
 from mpi4py import MPI
-
 
 class SpectralGrid(object):
     """Grid information for spectral arrays
@@ -98,7 +98,7 @@ class SpectralGrid(object):
         #: The global size of the mesh in physical space
         self.pdims = numpy.broadcast_to(numpy.atleast_1d(pdims), (3,)) \
             if pdims else self.sdims
-        box_size = numpy.broadcast_to(numpy.atleast_1d(box_size), (3,))
+        self.box_size = numpy.broadcast_to(numpy.atleast_1d(box_size), (3,))
         if self.sdims[0] > self.pdims[0] and self.sdims[0] % 2 == 0:
             warnings.warn(
                 "Truncating to an even number of modes in x: "
@@ -109,18 +109,18 @@ class SpectralGrid(object):
                 "Truncating to an even number of modes in y: "
                 "see the manual for why you don't want to do this"
                 )
-        P1, P2 = MPI.Compute_dims(self.comm.size, cpu_dims)
-        if P1*P2 != self.comm.size:
+        self.decomp = MPI.Compute_dims(self.comm.size, cpu_dims)
+        if self.decomp[0]*self.decomp[1] != self.comm.size:
             raise ValueError(
                 "Domain decomposition does not match the number of available processors."
                 )
         #: Communicator for swapping the z pencils to y pencils.
-        self.comm_zy = self.comm.Split(self.comm.rank % P1)
+        self.comm_zy = self.comm.Split(self.comm.rank % self.decomp[0])
         #: Communicator for swapping the y pencils to x pencils.
-        self.comm_yx = self.comm.Split(self.comm.rank // P1)
+        self.comm_yx = self.comm.Split(self.comm.rank // self.decomp[0])
         
-        x_slices = self.decompose(self.pdims[0], P1, even=True)
-        y_slices = self.decompose(self.pdims[1], P2, even=True)
+        x_slices = self.decompose(self.pdims[0], self.decomp[0], even=True)
+        y_slices = self.decompose(self.pdims[1], self.decomp[1], even=True)
 
         # Get local ranks. Due to the communicator split, we have more "local" slices
         zy_rank = self.comm_zy.Get_rank()
@@ -128,31 +128,31 @@ class SpectralGrid(object):
         self._local_x_slice = x_slices[yx_rank]
         self._local_y_slice = y_slices[zy_rank]
 
-        local_physical_slice = (
+        self.local_physical_slice = (
             self._local_x_slice,
             self._local_y_slice,
             slice(0, self.pdims[2])
             )
         
-        ky_slices = self.decompose(self.sdims[1], P1)
-        kz_slices = self.decompose(self.sdims[2] // 2 + 1, P2, even=True)
+        ky_slices = self.decompose(self.sdims[1], self.decomp[0])
+        kz_slices = self.decompose(self.sdims[2] // 2 + 1, self.decomp[1], even=True)
         
         #: The slice of the global spectral mesh stored by this process
         #: loal on comm_zy
         self._local_ky_slice = ky_slices[yx_rank]
         self._local_kz_slice = kz_slices[zy_rank]
 
-        local_spectral_slice = (
+        self.local_spectral_slice = (
             slice(0, self.sdims[0]),
             self._local_ky_slice,
             self._local_kz_slice
             )
         #: A 3-tuple with the physical mesh spacing in each dimension
-        self.dx = box_size/self.pdims
+        self.dx = self.box_size/self.pdims
         #: The local physical space mesh
         self.x = self.dx[:,numpy.newaxis, numpy.newaxis, numpy.newaxis] \
-            * numpy.mgrid[local_physical_slice]
-        k = numpy.mgrid[local_spectral_slice]
+            * numpy.mgrid[self.local_physical_slice]
+        k = numpy.mgrid[self.local_spectral_slice]
         # Note, use sample spacing/2pi to get radial frequencies, rather
         # than circular frequencies.
         fftfreq0 = numpy.fft.fftfreq(self.pdims[0], self.dx[0]/(2*numpy.pi))[
@@ -162,7 +162,7 @@ class SpectralGrid(object):
             [*range(0, (self.sdims[1]+1)//2), *range(-(self.sdims[1]//2), 0)]
             ]
         rfftfreq = numpy.fft.rfftfreq(
-            self.pdims[2],self.dx[2]/(2*numpy.pi)
+            self.pdims[2], self.dx[2]/(2*numpy.pi)
             )[:self.sdims[2]//2+1]
         #: The local spectral space mesh (wavenumbers)
         self.k = numpy.array([
@@ -278,7 +278,19 @@ class SpectralGrid(object):
         self.comm_zy.Free()
         self.comm_yx.Free()
 
-              
+    def __str__(self):
+        return textwrap.dedent(f"""\
+                 SpectralGrid
+                   Global Physical Size: {self.pdims}
+                   Global Spectral Size: {self.sdims}
+                   Box size: {self.box_size}
+                   Delta x: {self.dx}
+                   Delta k: {self.k[:, 1, 1, 1]}
+                   Rank decomposition: {self.decomp}
+                   Local Physical Slice: {self.local_physical_slice}
+                   Local Spectral Slice: {self.local_spectral_slice}\
+                 """)
+        
     @cached_property
     def P(self):
         r"""Navier-Stokes pressure projection operator.
