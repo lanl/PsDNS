@@ -563,6 +563,13 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             n /= numpy.product(self.grid.pdims)
         return n
 
+    def avg_xy(self, axis=()):
+        """Return the data averaged in x-y planes."""
+        n = self.grid.comm.reduce(numpy.sum(self, axis=axis+(-3, -2)))
+        if self.grid.comm.rank == 0:
+            n /= self.grid.pdims[0]*self.grid.pdims[1]
+        return n
+
 
 class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     """Array of spectral space data
@@ -646,7 +653,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         else:
             return NotImplemented
 
-    def mpi_get_view(self):
+    @cached_property
+    def _mpi_file_view(self):
         """Return MPI file view
 
         Return a MPI data type which represents the view of the local
@@ -670,14 +678,12 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         Use MPI parallel file routines to write the
         :class:`SpectralData` to a file named *filename*.
         """
-        view = self.mpi_get_view()
         fh = MPI.File.Open(
             self.grid.comm, filename, MPI.MODE_WRONLY | MPI.MODE_CREATE
             )
-        fh.Set_view(0, filetype=view)
+        fh.Set_view(0, filetype=self._mpi_file_view)
         fh.Write_all(self._data)
         fh.Close()
-        view.Free()
         return self
     
     def read_checkpoint(self, filename):
@@ -686,12 +692,10 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         Use MPI parallel file routines to read the
         :class:`SpectralData` from a file named *filename*.
         """
-        view = self.mpi_get_view()
         fh = MPI.File.Open(self.grid.comm, filename, MPI.MODE_RDONLY)
-        fh.Set_view(0, filetype=view)
+        fh.Set_view(0, filetype=self._mpi_file_view)
         fh.Read_all(self._data)
         fh.Close()
-        view.Free()
         return self
 
     def copy(self):
