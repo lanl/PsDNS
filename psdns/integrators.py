@@ -106,6 +106,30 @@ class Integrator(object):
                 )
 
 
+class Reader(Integrator):
+    """Reads data for post processing.
+
+    This is a dummy integrator that does not actually advance the
+    timesteps.  Instead it inputs a new dump file at each step and
+    then passes the results to the specified diagnostics.  This is
+    useful for creating post-processing scripts.
+    """
+    def __init__(self, equations=lambda uhat: uhat, *args, **kwargs):
+        super().__init__(equations, *args, **kwargs)
+
+    def run(self):
+        self.read()
+        super().run()
+        
+    def step(self):
+        self.time += self.dt
+        self.read()
+
+    def read(self):
+        self.uhat.read_checkpoint("data{:04g}".format(self.time))
+        self.equations(self.uhat)
+
+    
 class Euler(Integrator):
     """Forward Euler integrator."""
     def step(self):

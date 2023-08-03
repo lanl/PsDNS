@@ -16,16 +16,19 @@ grid = SpectralGrid(
     box_size=[L, L, 4*L]
     )
 
-for fn in sorted(glob.glob("data????")):
-    s = SpectralArray(grid, (3,))
-    s.read_checkpoint(fn)
-    p = s.to_physical()
-    w = s.curl().to_physical()
-    evtk.hl.gridToVTK(
-        fn,
-        grid.x[0], grid.x[1], grid.x[2],
-        pointData = {
-            "U": (numpy.asarray(p[0]), numpy.asarray(p[1]), numpy.asarray(p[2])),
-            "Vorticity": (numpy.asarray(w[0]), numpy.asarray(w[1]), numpy.asarray(w[2])),
-        }
+def add_vorticity(uhat):
+    uhat[3:] = uhat[:3].curl()
+
+solver = Reader(
+    dt = 1,
+    tfinal = 10,
+    diagnostics = [
+        VTKDump(
+            tdump=1, grid=grid,
+            names=['U', 'V', 'W', 'OmegaX', 'OmegaY', 'OmegaZ' ]
+            )
+        ],
+    equations = add_vorticity,
+    ic = SpectralArray(grid, (6,)),
     )
+solver.run()

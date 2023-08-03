@@ -10,10 +10,9 @@ library diagnostics to use.
 """
 import csv
 import sys
+import warnings
 
 import numpy
-
-import evtk
 
 from psdns import *
 
@@ -388,6 +387,52 @@ class StandardDiagnostics(Diagnostic):
             self.outfile.flush()
 
 
+class Profiles(Diagnostic):
+    def diagnostic(self, time, equations, uhat):
+        # This diagnostic relies on the fact that the physical space data
+        # has each task containing the entire span in z.
+        u = uhat.to_physical()
+        ubar = u.avg_xy()
+        
+        # From here, we need u' fluctuation.  We redefine uhat and u to be
+        # fluctuations.  There are two ways to do that:
+        if True:
+            ubar = uhat.grid.comm.bcast(ubar)
+            u = u - ubar[:,numpy.newaxis,numpy.newaxis,:]
+            uhat = u.to_spectral()
+        else:
+            uhat = uhat.copy()
+            # In spectral space, u' is uhat with the zero modes in x & y set to zero.
+            if uhat.grid.local_spectral_slice[0].start == 0:
+                uhat[:,0,:,:] = 0
+            if uhat.grid.local_spectral_slice[1].start == 0:
+                uhat[:,:,0,:] = 0
+            u = uhat.to_physical()
+            
+        Rij = [
+            (u[i]*u[j]).avg_xy()
+            for i, j in [ (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2) ]
+            ]
+        gradu = uhat.grad()
+        grad2u = gradu.grad().to_physical()
+        gradu = gradu.to_physical()
+        eps = (gradu**2).avg_xy(axis=(0, 1))
+        S =  [
+            (gradu[i, k]*gradu[j, k]*gradu[i, j]).avg_xy()
+            for i in range(3) for j in range(3) for k in range(3)
+            ]
+        G = (grad2u**2).avg_xy(axis=(0, 1, 2))
+        
+        if uhat.grid.comm.rank == 0:
+            numpy.savetxt(
+                self.outfile,
+                (numpy.vstack([ uhat.grid.x[2,0,0,:], ubar ] + Rij + [ eps, sum(S), G ])).T,
+                header="t = {}\nt u v w Rxx Ryy Rzz Rxy Rxz Ryz epsilon S G".format(time)
+                )
+            self.outfile.write("\n\n")
+            self.outfile.flush()
+            
+
 class Spectra(Diagnostic):
     r"""A diagnostic class for velocity spectra
 
@@ -468,15 +513,21 @@ class VTKDump(Diagnostic):
     """
     def __init__(self, names, filename="./phys{time:04g}", **kwargs):
         if kwargs['grid'].comm.size != 1:
-            raise ValueError("VTKDump does not work with multiple MPI ranks.")
+            warnings.warn(
+                "VTKDump does not work with multiple MPI ranks.",
+                RuntimeWarning
+                )
+        # We defer evtk import so it does not become a dependency
+        # unless we are actually using the VTKDump diagnostic.
+        import evtk
+        self.gridToVTK = evtk.hl.gridToVTK
         super().__init__(**kwargs)
         self.filename = filename
         self.names = names
 
     def diagnostic(self, time, equations, uhat):
         u = numpy.asarray(uhat.to_physical())
-        time *= 10
-        evtk.hl.gridToVTK(
+        self.gridToVTK(
             self.filename.format(time=time),
             uhat.grid.x[0],
             uhat.grid.x[1],
