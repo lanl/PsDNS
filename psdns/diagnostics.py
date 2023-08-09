@@ -399,6 +399,7 @@ class StandardDiagnostics(Diagnostic):
 
 class Profiles(Diagnostic):
     def diagnostic(self, time, equations, uhat):
+        uhat = uhat[:3]
         # This diagnostic relies on the fact that the physical space data
         # has each task containing the entire span in z.
         u = uhat.to_physical()
@@ -437,7 +438,7 @@ class Profiles(Diagnostic):
             numpy.savetxt(
                 self.outfile,
                 (numpy.vstack([ uhat.grid.x[2,0,0,:], ubar ] + Rij + [ eps, sum(S), G ])).T,
-                header="t = {}\nt u v w Rxx Ryy Rzz Rxy Rxz Ryz epsilon S G".format(time)
+                header="t = {}\nz u v w Rxx Ryy Rzz Rxy Rxz Ryz epsilon S G".format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
@@ -502,9 +503,13 @@ class Spectra(Diagnostic):
 
 class FieldDump(Diagnostic):
     """Full spectral field file dumps"""
+    def __init__(self, filename="data{:04g}", **kwargs):
+        super().__init__(**kwargs)
+        self.filename=filename
+    
     def diagnostic(self, time, equations, uhat):
         """Write the solution fields in MPI format"""
-        uhat.checkpoint("data{:04g}".format(time))
+        uhat.checkpoint(self.filename.format(time))
 
 
 class VTKDump(Diagnostic):

@@ -25,12 +25,12 @@ referred to as *global*, whereas information about a specific rank is
 *local*.
 """
 from functools import cached_property
-import textwrap
 import warnings
 
 import numpy
 
 from mpi4py import MPI
+
 
 class SpectralGrid(object):
     """Grid information for spectral arrays
@@ -547,7 +547,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             if M[0] > N[0] and N[0] % 2 == 0:
                 t5[..., N[0]//2, :, :] = 0
         t5 = t5[..., i0, :, :]/numpy.prod(self.grid.pdims)
-        return SpectralArray(self.grid, t5)
+        return SpectralArray(self.grid, numpy.ascontiguousarray(t5))
 
     def norm(self):
         """Return the :math:`L_2` norm of the data."""
@@ -567,7 +567,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """Return the data averaged in x-y planes."""
         n = self.grid.comm.reduce(numpy.sum(self, axis=axis+(-3, -2)))
         if self.grid.comm.rank == 0:
-            n /= self.grid.pdims[0]*self.grid.pdims[1]
+            n /= numpy.product([self.shape[d] for d in axis])*self.grid.pdims[0]*self.grid.pdims[1]
         return n
 
 

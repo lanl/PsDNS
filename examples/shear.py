@@ -37,8 +37,8 @@ solver = RungeKutta(
     equations=equations,
     ic=shear_ic(grid),
     diagnostics=[
-        FieldDump(tdump=1.0, grid=grid),
-        StandardDiagnostics(tdump=1.0, grid=grid, fields=['divU'], outfile="std.dat"),
+        FieldDump(tdump=1.0, grid=grid, filename="data{:04g}"),
+        StandardDiagnostics(tdump=0.1, grid=grid, fields=['divU'], outfile="std.dat"),
         Profiles(tdump=1.0, grid=grid, outfile="profiles.dat")
         ],
     )
