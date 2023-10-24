@@ -553,21 +553,21 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """Return the :math:`L_2` norm of the data."""
         n = self.grid.comm.reduce(numpy.sum(self*self))
         if self.grid.comm.rank == 0:
-            n /= numpy.product(self.grid.pdims)
+            n /= numpy.prod(self.grid.pdims)
         return n
 
     def average(self):
         """Return the average of the data."""
         n = self.grid.comm.reduce(numpy.sum(self))
         if self.grid.comm.rank == 0:
-            n /= numpy.product(self.grid.pdims)
+            n /= numpy.prod(self.grid.pdims)
         return n
 
     def avg_xy(self, axis=()):
         """Return the data averaged in x-y planes."""
         n = self.grid.comm.reduce(numpy.sum(self, axis=axis+(-3, -2)))
         if self.grid.comm.rank == 0:
-            n /= numpy.product([self.shape[d] for d in axis])*self.grid.pdims[0]*self.grid.pdims[1]
+            n /= numpy.prod([self.shape[d] for d in axis])*self.grid.pdims[0]*self.grid.pdims[1]
         return n
 
 

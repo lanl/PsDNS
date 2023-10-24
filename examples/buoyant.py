@@ -35,7 +35,7 @@ class Boussinesq(NavierStokes):
         self.Sc = Sc
 
     def rhs(self, uhat):
-        """Compute the Boussinesq right hand side.
+        r"""Compute the Boussinesq right hand side.
 
         The numerical implementation is the same as for
         :meth:`psdns.equations.navier_stokes.NavierStokes.rhs` execpt

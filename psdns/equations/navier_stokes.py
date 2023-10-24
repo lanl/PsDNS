@@ -152,7 +152,7 @@ class NavierStokes(object):
 
     def rogallo(self, grid, energy=mansour,
                 params={'q2':3, 'sigma':2, 'kp':25}):
-        """Initialize with a specified spectrum and random phases.
+        r"""Initialize with a specified spectrum and random phases.
 
         Return a :class:`~psdns.bases.SpectralArray` with
         ``shape=(3,)``, containing a velocity field on *grid* that
