@@ -114,8 +114,9 @@ class Reader(Integrator):
     then passes the results to the specified diagnostics.  This is
     useful for creating post-processing scripts.
     """
-    def __init__(self, equations=lambda uhat: uhat, *args, **kwargs):
+    def __init__(self, equations=lambda uhat: uhat, filename="data{:04g}", *args, **kwargs):
         super().__init__(equations, *args, **kwargs)
+        self.filename = filename
 
     def run(self):
         self.read()
@@ -126,7 +127,7 @@ class Reader(Integrator):
         self.read()
 
     def read(self):
-        self.uhat.read_checkpoint("data{:04g}".format(self.time))
+        self.uhat.read_checkpoint(self.filename.format(self.time))
         self.equations(self.uhat)
 
     

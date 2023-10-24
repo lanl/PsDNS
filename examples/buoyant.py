@@ -8,7 +8,6 @@ instability eigenfunction.
 import numpy
 from psdns import *
 from psdns.equations.navier_stokes import Boussinesq
-import scipy
 
 
 grid = SpectralGrid(
@@ -22,11 +21,16 @@ solver = RungeKutta(
     dt=0.01,
     tfinal=10.0,
     equations=equations,
-    ic=equations.ic(grid),
+    ic=equations.perturbed_interface(
+        grid,
+        0.1*equations.band(grid, 8, 12),
+        0.1,
+        0.1
+        ),
     diagnostics=[
-        FieldDump(tdump=1.0, grid=grid, filename="datab{:04g}"),
-        StandardDiagnostics(tdump=0.1, grid=grid, fields=['tke', 'dissipation', 'divU'], outfile="stdb.dat"),
-        Profiles(tdump=0.1, grid=grid, outfile='profilesb.dat'),
+        FieldDump(tdump=1.0, grid=grid, filename="data{:04g}"),
+        StandardDiagnostics(tdump=0.1, grid=grid, fields=['tke', 'dissipation', 'divU'], outfile="std.dat"),
+        Profiles(tdump=0.1, grid=grid, outfile='profiles.dat'),
         ],
     )
 solver.run()

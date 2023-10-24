@@ -262,6 +262,43 @@ class Boussinesq(NavierStokes):
         s._data = numpy.ascontiguousarray(s._data)
         return s
 
+    def perturbed_interface(self, grid, z, delta1, delta2):
+        """Creates a perturbed interface.
+
+        *z* is the pertubation function.  *delta1* is the width of the
+        unstable interface, and *delta2* is the width of the stable 
+        interface.
+        """
+        u = PhysicalArray(grid, (4,))
+        x = u.grid.x
+        x1 = u.grid.box_size[2]/2
+        x2 = u.grid.box_size[2]
+        u[3] = (
+            scipy.special.erf((x[2] - x1)/delta1 + z[:,:,numpy.newaxis])
+            - scipy.special.erf(x[2]/delta2)
+            - scipy.special.erf((x[2] - x2)/delta2)
+            )
+        s = u.to_spectral()
+        s._data = numpy.ascontiguousarray(s._data)
+        return s
+
+    def band(self, grid, kmin, kmax):
+        # Check kmax fits on the grid!
+        x = grid.x[:2,:,:,0]
+        z = numpy.zeros(shape=x[0].shape)
+        # Since the loop will execute identically on all ranks, rng will
+        # generate the same random numbers.
+        rng = numpy.random.default_rng(100)
+        for n in range(kmax):
+            for m in range(kmax):
+                k = numpy.sqrt(n**2 + m**2)
+                if k >= kmin and k <= kmax:
+                    z += (
+                        numpy.cos(2*numpy.pi*(n*x[0]/grid.box_size[0]+rng.random()))
+                        *numpy.cos(2*numpy.pi*(m*x[1]/grid.box_size[1]+rng.random()))
+                        )
+        return z
+
 
 class SimplifiedSmagorinsky(NavierStokes):
     r"""A simplified Smagorinsky-type model.
