@@ -255,7 +255,12 @@ class Boussinesq(NavierStokes):
         nl = PhysicalArray(uhat.grid, nl).to_spectral()
         nl[2] += self.g*uhat[3]
         return nl
-    
+
+    def press_buoyant(self, uhat):
+        p = -uhat.grid.k[2]*uhat[3]*self.g \
+          / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
+        return SpectralArray(uhat.grid, p)
+
     def ic(self, grid):
         u = PhysicalArray(grid, (4,))
         x = u.grid.x
@@ -288,20 +293,20 @@ class Boussinesq(NavierStokes):
         s._data = numpy.ascontiguousarray(s._data)
         return s
 
-    def band(self, grid, kmin, kmax):
+    def band(self, grid, kmin, kmax, seed=None):
         # Check kmax fits on the grid!
         x = grid.x[:2,:,:,0]
         z = numpy.zeros(shape=x[0].shape)
         # Since the loop will execute identically on all ranks, rng will
         # generate the same random numbers.
-        rng = numpy.random.default_rng(100)
+        rng = numpy.random.default_rng(seed)
         for n in range(kmax):
             for m in range(kmax):
                 k = numpy.sqrt(n**2 + m**2)
                 if k >= kmin and k <= kmax:
                     z += (
-                        numpy.cos(n*x[0]/grid.box_size[0]+2*numpy.pi*rng.random())
-                        *numpy.cos(m*x[1]/grid.box_size[1]+2*numpy.pi*rng.random())
+                        numpy.cos(2*numpy.pi*(n*x[0]/grid.box_size[0]+rng.random()))
+                        *numpy.cos(2*numpy.pi*(m*x[1]/grid.box_size[1]+rng.random()))
                         )
         return z
 

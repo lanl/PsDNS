@@ -125,6 +125,11 @@ class StandardDiagnostics(Diagnostic):
             )
         if uhat.grid.comm.rank == 0:
             return cmax
+
+    def cavg(self, equation, uhat):
+        cavg = uhat[3].to_physical().average()
+        if uhat.grid.comm.rank == 0:
+            return cavg
     
     def tke(self, equations, uhat):
         """Compute the turbulent kinetic energy"""
@@ -442,7 +447,34 @@ class Profiles(Diagnostic):
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
-            
+
+class PressureProfiles(Diagnostic):
+    def diagnostic(self, time, equations, uhat):
+        # Get velocity fluctuations
+        u = uhat[:3].to_physical()
+        ubar = u.avg_xy()
+        ubar = uhat.grid.comm.bcast(ubar)
+        u = u - ubar[:,numpy.newaxis,numpy.newaxis,:]
+        # Get pressure fluctuations
+        p = equations.press_buoyant(uhat).to_physical()
+        pbar = p.avg_xy()
+        pbar = uhat.grid.comm.bcast(pbar)
+        p = p - pbar
+        # Pressure diffusion flux
+        pu = (p*u).avg_xy()
+        # Pressure strain
+        gradu = uhat[:3].grad().to_physical()
+        press_strain = (p*gradu).avg_xy()
+        
+        if uhat.grid.comm.rank == 0:
+            numpy.savetxt(
+                self.outfile,
+                numpy.vstack([ uhat.grid.x[2,0,0,:], pbar, pu, press_strain.reshape((9, -1)) ]).T,
+                header="t = {}\nz p pu pv pw".format(time)
+                )
+            self.outfile.write("\n\n")
+            self.outfile.flush()
+        
 
 class Spectra(Diagnostic):
     r"""A diagnostic class for velocity spectra

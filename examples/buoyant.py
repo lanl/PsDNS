@@ -17,20 +17,24 @@ grid = SpectralGrid(
     )
 equations = Boussinesq(Re=400)
 
+x = grid.x[:2,:,:,0]
 solver = RungeKutta(
     dt=0.01,
     tfinal=10.0,
     equations=equations,
     ic=equations.perturbed_interface(
         grid,
-        0.1*equations.band(grid, 8, 12),
+        1e-6*equations.band(grid, 1, 4)
+        + 0.01*numpy.cos(2*numpy.pi*(2*x[0]/grid.box_size[0]))
+        * numpy.cos(2*numpy.pi*(2*x[1]/grid.box_size[1])),
         0.1,
         0.1
         ),
     diagnostics=[
         FieldDump(tdump=1.0, grid=grid, filename="data{:04g}"),
-        StandardDiagnostics(tdump=0.1, grid=grid, fields=['tke', 'dissipation', 'divU'], outfile="std.dat"),
+        StandardDiagnostics(tdump=0.1, grid=grid, fields=['tke', 'dissipation', 'cavg', 'divU'], outfile="std.dat"),
         Profiles(tdump=0.1, grid=grid, outfile='profiles.dat'),
+        PressureProfiles(tdump=0.1, grid=grid, outfile='pressure.dat'),
         ],
     )
 solver.run()

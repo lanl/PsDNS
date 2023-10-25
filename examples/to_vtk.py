@@ -25,6 +25,6 @@ solver = Reader(
         ],
     equations = add_vorticity,
     ic = SpectralArray(grid, (7,)),
-    filename = "datab{:04g}",
+    filename = "data{:04g}",
     )
 solver.run()

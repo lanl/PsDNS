@@ -290,7 +290,7 @@ class SpectralGrid(object):
                    Local Physical Slice: {self.local_physical_slice}
                    Local Spectral Slice: {self.local_spectral_slice}\
                  """)
-        
+
     @cached_property
     def P(self):
         r"""Navier-Stokes pressure projection operator.
