@@ -29,6 +29,12 @@ class NavierStokes(object):
         self.nu = 1/Re
         self.Sc = Sc
 
+    def nonlinear(self, uhat, u):
+        vorticity = uhat[:3].curl().to_physical()
+        nl = numpy.cross(u, vorticity, axis=0)
+        nl = PhysicalArray(uhat.grid, nl).to_spectral()
+        return nl
+    
     def rhs(self, uhat):
         r"""Compute the Navier-Stokes right-hand side
 
@@ -96,15 +102,15 @@ class NavierStokes(object):
         gradc = uhat[3:].grad().to_physical()
         dc = - numpy.einsum("j...,ij...->i...", u, gradc)
         dc = PhysicalArray(uhat.grid, dc).to_spectral()
-        dc -= self.Sc*self.nu*uhat.grid.k2*uhat[3:]
+        dc -= self.nu/self.Sc*uhat.grid.k2*uhat[3:]
         
         return numpy.concatenate((du, dc))
 
-    def nonlinear(self, uhat, u):
-        vorticity = uhat[:3].curl().to_physical()
-        nl = numpy.cross(u, vorticity, axis=0)
-        nl = PhysicalArray(uhat.grid, nl).to_spectral()
-        return nl
+    def pressure(self, uhat):
+        u = uhat[:3].to_physical()
+        p = 1j*numpy.einsum("i...,i...", uhat.grid.k, self.nonlinear(uhat, u)) \
+          / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
+        return SpectralArray(uhat.grid, p)
     
     def taylor_green_vortex(self, grid, A=1, B=-1, C=0, a=1, b=1, c=1):
         r"""Initialize with the Taylor-Green problem
@@ -294,8 +300,8 @@ class Boussinesq(NavierStokes):
                 k = numpy.sqrt(n**2 + m**2)
                 if k >= kmin and k <= kmax:
                     z += (
-                        numpy.cos(2*numpy.pi*(n*x[0]/grid.box_size[0]+rng.random()))
-                        *numpy.cos(2*numpy.pi*(m*x[1]/grid.box_size[1]+rng.random()))
+                        numpy.cos(n*x[0]/grid.box_size[0]+2*numpy.pi*rng.random())
+                        *numpy.cos(m*x[1]/grid.box_size[1]+2*numpy.pi*rng.random())
                         )
         return z
 
