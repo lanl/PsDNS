@@ -257,10 +257,34 @@ class Boussinesq(NavierStokes):
         return nl
 
     def press_buoyant(self, uhat):
-        p = -uhat.grid.k[2]*uhat[3]*self.g \
+        p = -uhat.grid.k[2]*uhat[3].disturbance()*self.g \
           / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
         return SpectralArray(uhat.grid, p)
 
+    def press_rapid(self, uhat):
+        # We need z derivatives of planar averaged quantities.  The
+        # most efficient way to do this would be to write specialized
+        # code for doing this spectrally, taking into account the
+        # domain decomposition, but for simplicty we use this less
+        # efficient method.
+        dudz = (1j*uhat.grid.k[2]*uhat[0]).to_physical().avg_xy()
+        dvdz = (1j*uhat.grid.k[2]*uhat[1]).to_physical().avg_xy()
+        dudz = uhat.grid.comm.bcast(dudz)
+        dvdz = uhat.grid.comm.bcast(dvdz)
+        w = uhat[2].disturbance()
+        dwdx = (1j*uhat.grid.k[0]*w).to_physical()
+        dwdy = (1j*uhat.grid.k[1]*w).to_physical()
+        rhs = - 2 * ( dudz * dwdx + dvdz * dwdy ).to_spectral()
+        p = rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
+        return SpectralArray(uhat.grid, p)
+
+    def press_slow(self, uhat):
+        u = uhat[:3].disturbance().to_physical()
+        uiuj = PhysicalArray(uhat.grid, numpy.einsum("i...,j...->ij...", u, u)).to_spectral()
+        rhs = uiuj.disturbance().div().div()
+        p = rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
+        return SpectralArray(uhat.grid, p)
+    
     def ic(self, grid):
         u = PhysicalArray(grid, (4,))
         x = u.grid.x

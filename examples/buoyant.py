@@ -35,6 +35,9 @@ solver = RungeKutta(
         StandardDiagnostics(tdump=0.1, grid=grid, fields=['tke', 'dissipation', 'cavg', 'divU'], outfile="std.dat"),
         Profiles(tdump=0.1, grid=grid, outfile='profiles.dat'),
         PressureProfiles(tdump=0.1, grid=grid, outfile='pressure.dat'),
+        RapidPressProfiles(tdump=0.1, grid=grid, outfile='press_r.dat'),
+        SlowPressProfiles(tdump=0.1, grid=grid, outfile='press_s.dat'),
+        BuoyantPressProfiles(tdump=0.1, grid=grid, outfile='press_b.dat'),
         ],
     )
 solver.run()

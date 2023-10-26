@@ -570,6 +570,17 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             n /= numpy.prod([self.shape[d] for d in axis])*self.grid.pdims[0]*self.grid.pdims[1]
         return n
 
+    def disturbance(self):
+        """Return the mean and disturbance.
+
+        The mean is a 1-d array, and the disturbance is 3-d.  This is
+        always relative to the xy average.
+        """
+        bar = self.avg_xy()
+        bar = self.grid.comm.bcast(bar)
+        prime = self - bar[..., numpy.newaxis, numpy.newaxis, :]
+        return bar, prime
+
 
 class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     """Array of spectral space data
@@ -930,3 +941,15 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         else:
             val = 0
         return self.grid.comm.reduce(val)
+
+    def disturbance(self):
+        """Returns the disturbance.
+
+        """
+        prime = self.copy()
+        # In spectral space, u' is uhat with the zero modes in x & y set to zero.
+        if prime.grid.local_spectral_slice[0].start == 0:
+            prime[...,0,:,:] = 0
+        if prime.grid.local_spectral_slice[1].start == 0:
+            prime[...,:,0,:] = 0
+        return prime

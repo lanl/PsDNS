@@ -404,6 +404,7 @@ class StandardDiagnostics(Diagnostic):
 
 class Profiles(Diagnostic):
     def diagnostic(self, time, equations, uhat):
+        cbar = uhat[3].to_physical().avg_xy()
         uhat = uhat[:3]
         # This diagnostic relies on the fact that the physical space data
         # has each task containing the entire span in z.
@@ -438,17 +439,20 @@ class Profiles(Diagnostic):
             for i in range(3) for j in range(3) for k in range(3)
             ]
         G = (grad2u**2).avg_xy(axis=(0, 1, 2))
-        
+
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
-                (numpy.vstack([ uhat.grid.x[2,0,0,:], ubar ] + Rij + [ eps, sum(S), G ])).T,
-                header="t = {}\nz u v w Rxx Ryy Rzz Rxy Rxz Ryz epsilon S G".format(time)
+                (numpy.vstack([ uhat.grid.x[2,0,0,:], ubar, cbar ] + Rij + [ eps, sum(S), G ])).T,
+                header="t = {}\nz u v w c Rxx Ryy Rzz Rxy Rxz Ryz epsilon S G".format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
 
+
 class PressureProfiles(Diagnostic):
+    press_routine = "pressure"
+    
     def diagnostic(self, time, equations, uhat):
         # Get velocity fluctuations
         u = uhat[:3].to_physical()
@@ -456,7 +460,7 @@ class PressureProfiles(Diagnostic):
         ubar = uhat.grid.comm.bcast(ubar)
         u = u - ubar[:,numpy.newaxis,numpy.newaxis,:]
         # Get pressure fluctuations
-        p = equations.press_buoyant(uhat).to_physical()
+        p = getattr(equations, self.press_routine)(uhat).to_physical()
         pbar = p.avg_xy()
         pbar = uhat.grid.comm.bcast(pbar)
         p = p - pbar
@@ -465,16 +469,30 @@ class PressureProfiles(Diagnostic):
         # Pressure strain
         gradu = uhat[:3].grad().to_physical()
         press_strain = (p*gradu).avg_xy()
-        
+        # Other term
+        gradp = p.to_spectral().grad()
+        rhogradp = (uhat[3].to_physical()*gradp.to_physical()).avg_xy()
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
-                numpy.vstack([ uhat.grid.x[2,0,0,:], pbar, pu, press_strain.reshape((9, -1)) ]).T,
-                header="t = {}\nz p pu pv pw".format(time)
+                numpy.vstack([ uhat.grid.x[2,0,0,:], pbar, pu, press_strain.reshape((9, -1)), rhogradp ]).T,
+                header="t = {}\nz p pu pv pw pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz".format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
-        
+
+
+class RapidPressProfiles(PressureProfiles):
+    press_routine = "press_rapid"
+
+
+class SlowPressProfiles(PressureProfiles):
+    press_routine = "press_slow"
+
+
+class BuoyantPressProfiles(PressureProfiles):
+    press_routine = "press_buoyant"
+
 
 class Spectra(Diagnostic):
     r"""A diagnostic class for velocity spectra
