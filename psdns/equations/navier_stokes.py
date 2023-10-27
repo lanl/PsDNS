@@ -257,7 +257,7 @@ class Boussinesq(NavierStokes):
         return nl
 
     def press_buoyant(self, uhat):
-        p = -uhat.grid.k[2]*uhat[3].disturbance()*self.g \
+        p = 1j*uhat.grid.k[2]*uhat[3].disturbance()*self.g \
           / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
         return SpectralArray(uhat.grid, p)
 
@@ -279,10 +279,20 @@ class Boussinesq(NavierStokes):
         return SpectralArray(uhat.grid, p)
 
     def press_slow(self, uhat):
-        u = uhat[:3].disturbance().to_physical()
-        uiuj = PhysicalArray(uhat.grid, numpy.einsum("i...,j...->ij...", u, u)).to_spectral()
-        rhs = uiuj.disturbance().div().div()
-        p = rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
+        # u = uhat[:3].disturbance().to_physical()
+        # uiuj = PhysicalArray(uhat.grid, numpy.einsum("i...,j...->ij...", u, u)).to_spectral()
+        # rhs = uiuj.disturbance().div().div()
+        # p = - rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
+        u = uhat[:3].disturbance()
+        vorticity = u.curl()
+        rhs = PhysicalArray(
+            uhat.grid,
+            numpy.cross(
+                u.to_physical(),
+                vorticity.to_physical(),
+                axis=0)
+            ).to_spectral().disturbance()
+        p = 1j * rhs.div() / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
         return SpectralArray(uhat.grid, p)
     
     def ic(self, grid):

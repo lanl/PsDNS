@@ -948,8 +948,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         """
         prime = self.copy()
         # In spectral space, u' is uhat with the zero modes in x & y set to zero.
-        if prime.grid.local_spectral_slice[0].start == 0:
-            prime[...,0,:,:] = 0
-        if prime.grid.local_spectral_slice[1].start == 0:
-            prime[...,:,0,:] = 0
+        if (prime.grid.local_spectral_slice[0].start == 0 and
+            prime.grid.local_spectral_slice[1].start == 0):
+            prime[...,0,0,:] = 0
         return prime
