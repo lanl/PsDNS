@@ -108,10 +108,51 @@ class NavierStokes(object):
 
     def pressure(self, uhat):
         u = uhat[:3].to_physical()
-        p = 1j*numpy.einsum("i...,i...", uhat.grid.k, self.nonlinear(uhat, u)) \
+        p = - self.nonlinear(uhat, u).div() \
           / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
         return SpectralArray(uhat.grid, p)
     
+    def press_rapid(self, uhat):
+        # We need z derivatives of planar averaged quantities.  The
+        # most efficient way to do this would be to write specialized
+        # code for doing this spectrally, taking into account the
+        # domain decomposition, but for simplicty we use this less
+        # efficient method.
+        # dudz = (1j*uhat.grid.k[2]*uhat[0]).to_physical().avg_xy()
+        # dvdz = (1j*uhat.grid.k[2]*uhat[1]).to_physical().avg_xy()
+        # dudz = uhat.grid.comm.bcast(dudz)
+        # dvdz = uhat.grid.comm.bcast(dvdz)
+        # w = uhat[2].disturbance()
+        # dwdx = (1j*uhat.grid.k[0]*w).to_physical()
+        # dwdy = (1j*uhat.grid.k[1]*w).to_physical()
+        # rhs = - 2 * ( dudz * dwdx + dvdz * dwdy ).to_spectral()
+        # p = rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
+        ubar, u = uhat[:3].to_physical().disturbance()
+        vortbar, vorticity = uhat[:3].curl().to_physical().disturbance()
+        rhs = PhysicalArray(
+            uhat.grid,
+            numpy.cross(ubar[:,numpy.newaxis,numpy.newaxis,:], vorticity, axis=0)
+            + numpy.cross(u, vortbar[:,numpy.newaxis,numpy.newaxis,:], axis=0)
+            ).to_spectral().div()
+        return - rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
+
+    def press_slow(self, uhat):
+        # u = uhat[:3].disturbance().to_physical()
+        # uiuj = PhysicalArray(uhat.grid, numpy.einsum("i...,j...->ij...", u, u)).to_spectral()
+        # rhs = uiuj.disturbance().div().div()
+        # p = - rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
+        u = uhat[:3].disturbance()
+        vorticity = u.curl()
+        rhs = PhysicalArray(
+            uhat.grid,
+            numpy.cross(
+                u.to_physical(),
+                vorticity.to_physical(),
+                axis=0)
+            ).to_spectral().disturbance()
+        p = - rhs.div() / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
+        return SpectralArray(uhat.grid, p)
+
     def taylor_green_vortex(self, grid, A=1, B=-1, C=0, a=1, b=1, c=1):
         r"""Initialize with the Taylor-Green problem
 
@@ -257,42 +298,8 @@ class Boussinesq(NavierStokes):
         return nl
 
     def press_buoyant(self, uhat):
-        p = 1j*uhat.grid.k[2]*uhat[3].disturbance()*self.g \
+        p = - 1j * uhat.grid.k[2] * uhat[3].disturbance() * self.g \
           / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
-        return SpectralArray(uhat.grid, p)
-
-    def press_rapid(self, uhat):
-        # We need z derivatives of planar averaged quantities.  The
-        # most efficient way to do this would be to write specialized
-        # code for doing this spectrally, taking into account the
-        # domain decomposition, but for simplicty we use this less
-        # efficient method.
-        dudz = (1j*uhat.grid.k[2]*uhat[0]).to_physical().avg_xy()
-        dvdz = (1j*uhat.grid.k[2]*uhat[1]).to_physical().avg_xy()
-        dudz = uhat.grid.comm.bcast(dudz)
-        dvdz = uhat.grid.comm.bcast(dvdz)
-        w = uhat[2].disturbance()
-        dwdx = (1j*uhat.grid.k[0]*w).to_physical()
-        dwdy = (1j*uhat.grid.k[1]*w).to_physical()
-        rhs = - 2 * ( dudz * dwdx + dvdz * dwdy ).to_spectral()
-        p = rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
-        return SpectralArray(uhat.grid, p)
-
-    def press_slow(self, uhat):
-        # u = uhat[:3].disturbance().to_physical()
-        # uiuj = PhysicalArray(uhat.grid, numpy.einsum("i...,j...->ij...", u, u)).to_spectral()
-        # rhs = uiuj.disturbance().div().div()
-        # p = - rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
-        u = uhat[:3].disturbance()
-        vorticity = u.curl()
-        rhs = PhysicalArray(
-            uhat.grid,
-            numpy.cross(
-                u.to_physical(),
-                vorticity.to_physical(),
-                axis=0)
-            ).to_spectral().disturbance()
-        p = 1j * rhs.div() / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
         return SpectralArray(uhat.grid, p)
     
     def ic(self, grid):
