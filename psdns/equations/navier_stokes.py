@@ -45,9 +45,23 @@ class NavierStokes(object):
 
         self.Re = Re
         self.Sc = Sc
-        self.nu = 1/Re
-        self.D = 1/(Re*Sc)
+
+    def _get_Re(self):
+        return 1.0/self.nu
+
+    def _set_Re(self, Re):
+        self.nu = 1.0/Re
+
+    Re = property(_get_Re, _set_Re)
         
+    def _get_Sc(self):
+        return self.nu/self.D
+
+    def _set_Sc(self, Sc):
+        self.D = self.nu/Sc
+
+    Sc = property(_get_Sc, _set_Sc)
+
     def rhs(self, uhat):
         r"""Compute the Navier-Stokes right-hand side
 
