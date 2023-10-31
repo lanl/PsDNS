@@ -9,34 +9,51 @@ from psdns import *
 class NavierStokes(object):
     r"""Incompressible Navier-Stokes equations
 
-    The incompressible Navier-Stokes equations are (non-dimensionalized)
+    The incompressible Navier-Stokes equations for an incompressible
+    fluid with a passive scalar are (non-dimensionalized)
 
     .. math::
 
         u_{i,i} & = 0 \\
-        u_{i,t} + u_j u_{i,j} & = - p_{,i} + \frac{1}{\mathrm{Re}} u_{i,jj}
-
+        u_{i,t} + u_j u_{i,j} & = - p_{,i} + \nu u_{i,jj} \\
+        c_{,t} + u_{j}c_{,j} & = D c_{,jj}
     """
     def __init__(self, Re, Sc=1, **kwargs):
-        """Return a Navier-Stokes equation object.
+        r"""Return a Navier-Stokes equation object.
 
         Instantiating returns a Navier-Stokes equation object with
-        Reynolds number *Re*.
+        Reynolds number *Re* and Schmidt number *Sc*.
+
+        Since passive scalars do not influence the flow, multiple scalar
+        fields can be simulated simultaneously.  The initial condition
+        for the :class:`NavierStokes` class should be a vector of length
+        :math:`3+N`, where the first three components are the velocity
+        field, and the remaining :math:`N` are an arbitrary number of
+        passive scalars (:math:`N` could be zero).
+        
+        .. rubric:: A note on non-dimensionalization
+        
+        It is typical to work in non-dimensional units, however,
+        internally the code converts Reynolds and Schmidt numbers to
+        :math:`\nu = 1 / \mathrm{Re}` and :math:`D = 1 / \mathrm{Sc}
+        \mathrm{Re}`, so that the diffusion coefficients can be set to
+        zero.  Users who prefer to work in dimensional units can use any
+        consistent set, and set the diffusion coefficients to the
+        desired dimensional values according to these formulae.
         """
         super().__init__(**kwargs)
 
         self.Re = Re
-        self.nu = 1/Re
         self.Sc = Sc
-
-    def nonlinear(self, uhat, u):
-        vorticity = uhat[:3].curl().to_physical()
-        nl = numpy.cross(u, vorticity, axis=0)
-        nl = PhysicalArray(uhat.grid, nl).to_spectral()
-        return nl
-    
+        self.nu = 1/Re
+        self.D = 1/(Re*Sc)
+        
     def rhs(self, uhat):
         r"""Compute the Navier-Stokes right-hand side
+
+        Take the velocity and scalar fields in spectral space given by
+        *uhat* and return a vector of the same length containing the
+        right-hand side of the evolution equations.
 
         To compute the Navier-Stokes right-hand side in spectral
         space, we first Fourier transform the equations
@@ -46,57 +63,32 @@ class NavierStokes(object):
             k_i \hat{u}_i
             & = 0 \\
             \hat{u}_{i,t} + \widehat{u_j u_{i,j}}
-            & = - i k_i \hat{p} - \nu k^2 \hat{u}_i
+            & = - i k_i \hat{p} - \nu k^2 \hat{u}_i \\
+            \hat{c}_{,t} + \widehat{u_{j}c_{,j}}
+            & = - D k^2 \hat{c}
 
         To eliminate pressure, multiply the momentum equation by :math:`k_i`,
         and use continuity
 
         .. math::
+            :label: poisson
 
             \hat{p} = i \frac{k_j}{k^2} \widehat{u_k u_{j,k}}
 
         Substituting back into the momentum equation, the evolution
-        equation becomes
+        equations are
 
         .. math::
 
             \left( \frac{\partial}{\partial t} + \nu k^2 \right) \hat{u}_i
-            = \left( \frac{k_i k_j}{k^2} - \delta_{ij} \right)
-              \widehat{u_k u_{j,k}}
-
-        As written, the non-linear term requires 12 backward
-        (spectral-to-physical) and 3 forward transforms.  Using the
-        `identity <https://en.wikipedia.org/wiki/
-        Vector_calculus_identities#Cross_product_rule>`_
-
-        .. math::
-
-            \mathbf{A \times ( \nabla \times B )}
-            = \mathbf{A \cdot \nabla B - ( A \cdot \nabla) B}
-
-        and substituting in :math:`u_i` for both :math:`\mathbf{A}` and
-        :math:`\mathbf{B}`, we have
-
-        .. math::
-
-            u_j u_{i,j}
-            = - \boldsymbol{u} \times \boldsymbol{\omega}
-
-        This form of the non-linear term has the advantage of requiring
-        only 6 backward transforms.
-
-        So the final form of the equations computed by
-        :class:`NavierStokes` is
-
-        .. math::
-
-            \left( \frac{\partial}{\partial t} + \nu k^2 \right) \hat{u}_i
-            = \left( \delta_{ij} - \frac{k_i k_j}{k^2} \right)
-            \widehat{\left( \boldsymbol{u} \times \boldsymbol{\omega}\right)_j}
+            & = - \left(  \delta_{ij} - \frac{k_i k_j}{k^2} \right)
+                \widehat{u_k u_{j,k}} \\
+            \left( \frac{\partial}{\partial t} + D k^2 \right) \hat{c}
+            & = - \widehat{u_{j}c_{,j}}
         """
         u = uhat[:3].to_physical()
         nl = self.nonlinear(uhat, u)
-        du = numpy.einsum("ij...,j...->i...", uhat.grid.P, nl)
+        du = - numpy.einsum("ij...,j...->i...", uhat.grid.P, nl)
         du -= self.nu*uhat.grid.k2*uhat[:3]
 
         gradc = uhat[3:].grad().to_physical()
@@ -106,52 +98,100 @@ class NavierStokes(object):
         
         return numpy.concatenate((du, dc))
 
+    def nonlinear(self, uhat, u):
+        """Compute the non-linear term for the Navier-Stokes operator
+
+        Return the non-linear operator from the momentume equatiom,
+        :math:`\widehat{u_k u_{j,k}}`, computed psuedo-spectrally, using
+        the spectral space vector of unknowns *uhat* and the physical
+        space velocity field *u*.  This routines requires the velocity
+        field to be passed in, since it needs to be computed in the
+        :meth:`rhs` routine for use in the non-linear terms in the
+        scalar equations.
+        """
+        gradu = uhat[:3].grad().to_physical()
+        return PhysicalArray(
+            uhat.grid,
+            numpy.einsum("j...,ij...->i...", u, gradu)).to_spectral()
+
     def pressure(self, uhat):
+        """Return the pressure field
+
+        Compute the pressure field corresponding to the spectral space
+        velocity field *uhat*, using the Poisson equation in,
+        :eq:`poisson`.
+        """
         u = uhat[:3].to_physical()
-        p = - self.nonlinear(uhat, u).div() \
+        # Call the NavierStokes method explictly, because for the
+        # pressure calculation, even the RotationalNavierStokes class
+        # needs to use this version of the non-linear term, otherwise
+        # you get dynamic pressure instead.
+        p = self.nonlinear(uhat, u).div() \
           / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
         return SpectralArray(uhat.grid, p)
     
     def press_rapid(self, uhat):
+        r"""Compute the rapid pressure
+
+        For turbulent flows, we can decompose the flow into a mean and
+        fluctuating part denoted by as
+
+        .. math::
+
+            f = \bar{f} + f'
+
+        For the pressure, it is straightforward to show that the
+        fluctuating pressure can be further decomposed into a slow and a
+        rapid part, defined by
+
+        .. math::
+
+            \nabla^2 p^s
+            & = \frac{\partial^2}{\partial x_{i}\partial x_{j}}
+            \left[
+                \overline{u_{i}'u_{j}'}-u_{i}'u_{j}'
+            \right] \\
+            \nabla^2 p^r
+            & = - 2 \frac{\partial\bar{u}_{j}}{\partial x_{i}} 
+                    \frac{\partial u_{i}'}{\partial x_{j}}
+
+        This routine takes a spectral space velocity field *uhat* and
+        returns the rapid pressure, :math:`p^r`, relative to a planar
+        average in the :math:`x-y` plane.
+        """
         # We need z derivatives of planar averaged quantities.  The
         # most efficient way to do this would be to write specialized
         # code for doing this spectrally, taking into account the
         # domain decomposition, but for simplicty we use this less
         # efficient method.
-        # dudz = (1j*uhat.grid.k[2]*uhat[0]).to_physical().avg_xy()
-        # dvdz = (1j*uhat.grid.k[2]*uhat[1]).to_physical().avg_xy()
-        # dudz = uhat.grid.comm.bcast(dudz)
-        # dvdz = uhat.grid.comm.bcast(dvdz)
-        # w = uhat[2].disturbance()
-        # dwdx = (1j*uhat.grid.k[0]*w).to_physical()
-        # dwdy = (1j*uhat.grid.k[1]*w).to_physical()
-        # rhs = - 2 * ( dudz * dwdx + dvdz * dwdy ).to_spectral()
-        # p = rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
-        ubar, u = uhat[:3].to_physical().disturbance()
-        vortbar, vorticity = uhat[:3].curl().to_physical().disturbance()
-        rhs = PhysicalArray(
-            uhat.grid,
-            numpy.cross(ubar[:,numpy.newaxis,numpy.newaxis,:], vorticity, axis=0)
-            + numpy.cross(u, vortbar[:,numpy.newaxis,numpy.newaxis,:], axis=0)
-            ).to_spectral().div()
+        #
+        # Note, by definition, x and y derivatives of mean velocity are
+        # zero, and, by continuity, the so is the z derivative of mean w
+        # velocity.  So only the following two components contribute to
+        # the r.h.s.
+        dudz = (1j*uhat.grid.k[2]*uhat[0]).to_physical().avg_xy()
+        dvdz = (1j*uhat.grid.k[2]*uhat[1]).to_physical().avg_xy()
+        dudz = uhat.grid.comm.bcast(dudz)
+        dvdz = uhat.grid.comm.bcast(dvdz)
+        w = uhat[2].disturbance()
+        dwdx = (1j*uhat.grid.k[0]*w).to_physical()
+        dwdy = (1j*uhat.grid.k[1]*w).to_physical()
+        # The minus sign cancels between the r.h.s. and the -k^2 in the
+        # Laplacian.
+        rhs = - 2 * ( dudz * dwdx + dvdz * dwdy ).to_spectral()
         return - rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
 
     def press_slow(self, uhat):
-        # u = uhat[:3].disturbance().to_physical()
-        # uiuj = PhysicalArray(uhat.grid, numpy.einsum("i...,j...->ij...", u, u)).to_spectral()
-        # rhs = uiuj.disturbance().div().div()
-        # p = - rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
-        u = uhat[:3].disturbance()
-        vorticity = u.curl()
-        rhs = PhysicalArray(
-            uhat.grid,
-            numpy.cross(
-                u.to_physical(),
-                vorticity.to_physical(),
-                axis=0)
-            ).to_spectral().disturbance()
-        p = - rhs.div() / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
-        return SpectralArray(uhat.grid, p)
+        r"""Compute the slow pressure
+
+        This routine takes a spectral space velocity field *uhat* and
+        returns the slow pressure, :math:`p^s`, relative to a planar
+        average in the :math:`x-y` plane.
+        """
+        u = uhat[:3].disturbance().to_physical()
+        uiuj = PhysicalArray(uhat.grid, numpy.einsum("i...,j...->ij...", u, u)).to_spectral()
+        rhs = - uiuj.disturbance().div().div()
+        return - rhs / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
 
     def taylor_green_vortex(self, grid, A=1, B=-1, C=0, a=1, b=1, c=1):
         r"""Initialize with the Taylor-Green problem
@@ -251,8 +291,86 @@ class NavierStokes(object):
 
         return u
 
-class Boussinesq(NavierStokes):
-    """The Navier-Stokes equation with Boussinesq approximation for buoyancy.
+
+class RotationalNavierStokes(NavierStokes):
+    r"""Incompressible Navier-Stokes in rotational form
+
+    The computation of the non-linear term in the standard form, as
+    implemented in :meth:`NavierStokes.nonlinear`, 
+
+    This incompressible Navier-Stokes can be written in an alternate
+    form, termed rotational form, requires 12 backward
+    (spectral-to-physical) and 3 forward transforms.  Using the
+    `identity <https://en.wikipedia.org/wiki/
+    Vector_calculus_identities#Cross_product_rule>`_        
+    
+    .. math::
+    
+        \mathbf{A \times ( \nabla \times B )}
+        = \mathbf{A \cdot \nabla B - ( A \cdot \nabla) B}
+
+    and substituting in :math:`u_i` for both :math:`\mathbf{A}` and
+    :math:`\mathbf{B}`, we can re-write the non-linear term as,
+
+    .. math::
+
+        \mathbf{( u \cdot \nabla) u}
+        = \frac{1}{2} \nabla u^2 - \boldsymbol{u} \times \boldsymbol{\omega}
+
+    The momentum equation then can be written as
+
+    .. math::
+
+        \frac{\partial u_i}{\partial t} -  \boldsymbol{u} \times \boldsymbol{\omega}
+        = - \frac{\partial}{\partial x_i} \left[ p + \frac{1}{2} u^2 \right] 
+        + \nu \nabla^2 u_i
+
+    This form of the non-linear term has the advantage of requiring only
+    6 backward transforms.  The pressure term (in brackets) is now
+    the dynamic pressure.  The Poisson equation for the dynamic pressure
+    is (in Fourier space)
+
+    .. math::
+
+        \widehat{\left[ p + \frac{1}{2} u^2 \right]}
+        = - i \frac{k_j}{k^2} \widehat{( \boldsymbol{u} \times \boldsymbol{\omega})}_j
+    
+    Eliminating dynamic pressure from the momentum equation, the final
+    equation to be solved is
+
+    .. math::
+
+        \left( \frac{\partial}{\partial t} + \nu k^2 \right) \hat{u}_i
+        = \left( \delta_{ij} - \frac{k_i k_j}{k^2} \right)
+            \widehat{\left( \boldsymbol{u} \times \boldsymbol{\omega}\right)_j}
+    """
+    def nonlinear(self, uhat, u):
+        r"""Compute the rotational Navier-Stokes non-linear term
+
+        Returns the non-linear term :math:`\boldsymbol{u} \times
+        \boldsymbol{\omega}` with the vorticity computed from spectral
+        velocity fields in the first three elements of *uhat* and the
+        velocity from the physical space velocity *u*.
+        """
+        vorticity = uhat[:3].curl().to_physical()
+        nl = - numpy.cross(u, vorticity, axis=0)
+        nl = PhysicalArray(uhat.grid, nl).to_spectral()
+        return nl
+
+    def pressure(self, uhat):
+        """Return the pressure field
+
+        Compute the pressure field corresponding to the spectral space
+        velocity field *uhat*, using the Poisson equation in,
+        :eq:`poisson`.  Note that the pressure cannot be computed using
+        the rotational non-linear term, as that would yield the dynamic
+        pressure.
+        """
+        return NavierStokes.pressure(self, uhat)
+    
+
+class Boussinesq(RotationalNavierStokes):
+    r"""The Navier-Stokes equation with Boussinesq approximation for buoyancy.
 
     The incompressible Navier-Stokes equations, with a scalar
     transport equation and the Boussinesq approximation for buoyancy
@@ -262,8 +380,25 @@ class Boussinesq(NavierStokes):
 
         u_{i,i} & = 0 \\
         u_{i,t} + u_{j} u_{i,j} 
-        & = -p_{,i} + \frac{1}{\text{Re}} u_{i,jj} +cg_{i} \\
-        c_{,t} + u_{j}c_{,j} & = \frac{\text{Sc}}{\text{Re}} c_{,jj}
+        & = - p_{,i} + \nu u_{i,jj} + c g_i \\
+        c_{,t} + u_{j}c_{,j} & = D c_{,jj}
+
+    Denoting the non-linear term in the momentume equation
+    :math:`\mathrm{NL}`, we can eliminate pressure by Fourier
+    transforming, and writing the pressure Poisson equation as
+
+    .. math::
+
+        \hat{p}
+        & = i \frac{k_j}{k^2} \left( \widehat{\mathrm{NL}}_j - \hat{c} g_{j} \right) \\
+
+    so the momentum equation to be solved is
+    
+    .. math::
+
+        \left( \frac{\partial}{\partial t} +  \nu k^2 \right) \hat{u}_i
+        = - \left( \delta_{ij} -\frac{k_i k_j}{k^2} \right) 
+            \left( \widehat{\mathrm{NL}}_j - \hat{c} g_j \right) 
     """
     def __init__(self, g=-1, **kwargs):
         """Return a Boussinesq equation object.
@@ -288,14 +423,20 @@ class Boussinesq(NavierStokes):
             \left(
               \frac{\partial}{\partial t} + \nu k^{2}
             \right) \hat{u}_{i}
-            & = \left( \frac{k_{i}k_{j}}{k^{2}} - \delta_{ij} \right)
+            = \left( \frac{k_{i}k_{j}}{k^{2}} - \delta_{ij} \right)
             \left( \widehat{u_{k}u_{j,k}} - \hat{c} g_{j} \right)
         """
-        vorticity = uhat[:3].curl().to_physical()
-        nl = numpy.cross(u, vorticity, axis=0)
-        nl = PhysicalArray(uhat.grid, nl).to_spectral()
-        nl[2] += self.g*uhat[3]
+        nl = super().nonlinear(uhat, u)
+        nl[2] -= self.g*uhat[3]
         return nl
+
+    def pressure(self, uhat):
+        u = uhat[:3].to_physical()
+        nl = NavierStokes.nonlinear(self, uhat, u)
+        nl[2] -= self.g*uhat[3]
+        p = nl.div() \
+          / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
+        return SpectralArray(uhat.grid, p)
 
     def press_buoyant(self, uhat):
         p = - 1j * uhat.grid.k[2] * uhat[3].disturbance() * self.g \

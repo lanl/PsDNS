@@ -466,17 +466,13 @@ class PressureProfiles(Diagnostic):
         p = p - pbar
         # Pressure diffusion flux
         pu = (p*u).avg_xy()
-        pnorm = (p*p).avg_xy()
         # Pressure strain
         gradu = uhat[:3].grad().to_physical()
         press_strain = (p*gradu).avg_xy()
-        # Other term
-        gradp = p.to_spectral().grad()
-        rhogradp = (uhat[3].to_physical()*gradp.to_physical()).avg_xy()
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
-                numpy.vstack([ uhat.grid.x[2,0,0,:], pbar, pnorm, pu, press_strain.reshape((9, -1)), rhogradp ]).T,
+                numpy.vstack([ uhat.grid.x[2,0,0,:], pbar, pu, press_strain.reshape((9, -1)) ]).T,
                 header="t = {}\nz p pnorm pu pv pw pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz".format(time)
                 )
             self.outfile.write("\n\n")
