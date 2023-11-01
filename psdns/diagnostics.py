@@ -404,51 +404,56 @@ class StandardDiagnostics(Diagnostic):
 
 class Profiles(Diagnostic):
     def diagnostic(self, time, equations, uhat):
-        cbar = uhat[3].to_physical().avg_xy()
-        uhat = uhat[:3]
-        # This diagnostic relies on the fact that the physical space data
-        # has each task containing the entire span in z.
-        u = uhat.to_physical()
-        ubar = u.avg_xy()
-        
-        # From here, we need u' fluctuation.  We redefine uhat and u to be
-        # fluctuations.  There are two ways to do that:
-        if True:
-            ubar = uhat.grid.comm.bcast(ubar)
-            u = u - ubar[:,numpy.newaxis,numpy.newaxis,:]
-            uhat = u.to_spectral()
-        else:
-            uhat = uhat.copy()
-            # In spectral space, u' is uhat with the zero modes in x & y set to zero.
-            if uhat.grid.local_spectral_slice[0].start == 0:
-                uhat[:,0,:,:] = 0
-            if uhat.grid.local_spectral_slice[1].start == 0:
-                uhat[:,:,0,:] = 0
-            u = uhat.to_physical()
-            
+        ubar, u = uhat.to_physical().disturbance()
         Rij = [
             (u[i]*u[j]).avg_xy()
-            for i, j in [ (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2) ]
+            for i, j in [
+                (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2), (3, 3),
+                (3, 0), (3, 1), (3, 2)
+                ]
             ]
+        Rijk = [
+            (u[i]*u[j]*u[k]).avg_xy()
+            for i, j, k in [
+                (0, 0, 0), (1, 1, 1), (2, 2, 2), (0, 0, 1), (0, 0, 2),
+                (1, 1, 0), (1, 1, 2), (2, 2, 0), (2, 2, 1), (0, 1, 2)
+                ]
+            ]
+        if uhat.grid.comm.rank == 0:
+            numpy.savetxt(
+                self.outfile,
+                (numpy.vstack([ uhat.grid.x[2,0,0,:], ubar[:4] ] + Rij + Rijk )).T,
+                header="t = {}\nz u v w c Rxx Ryy Rzz Rxy Rxz Ryz b ax ay az Rxxx Ryyy Rzzz Rxxy Rxxz Ryyx Ryyz Rzzx Rzzy Rxyz".format(time)
+                )
+            self.outfile.write("\n\n")
+            self.outfile.flush()
+
+
+class DissipationProfiles(Diagnostic):
+    def diagnostic(self, time, equations, uhat):
         gradu = uhat.grad()
         grad2u = gradu.grad().to_physical()
         gradu = gradu.to_physical()
-        eps = (gradu**2).avg_xy(axis=(0, 1))
+        epsij = [
+            (gradu[i]*gradu[j]).avg_xy(axis=(0,))
+            for i, j in [
+                (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2), (3, 3),
+                (3, 0), (3, 1), (3, 2)
+                ]
+            ]
         S =  [
             (gradu[i, k]*gradu[j, k]*gradu[i, j]).avg_xy()
             for i in range(3) for j in range(3) for k in range(3)
             ]
         G = (grad2u**2).avg_xy(axis=(0, 1, 2))
-
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
-                (numpy.vstack([ uhat.grid.x[2,0,0,:], ubar, cbar ] + Rij + [ eps, sum(S), G ])).T,
-                header="t = {}\nz u v w c Rxx Ryy Rzz Rxy Rxz Ryz epsilon S G".format(time)
+                (numpy.vstack([ epsij, sum(S), G ])).T,
+                header="t = {}\nz epsxx epsyy epszz epsxy epsxz epsyz S G".format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
-
 
 class PressureProfiles(Diagnostic):
     press_routine = "pressure"
@@ -473,7 +478,7 @@ class PressureProfiles(Diagnostic):
             numpy.savetxt(
                 self.outfile,
                 numpy.vstack([ uhat.grid.x[2,0,0,:], pbar, pu, press_strain.reshape((9, -1)) ]).T,
-                header="t = {}\nz p pnorm pu pv pw pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz".format(time)
+                header="t = {}\nz p pu pv pw pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz".format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
