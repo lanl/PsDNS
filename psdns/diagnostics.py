@@ -431,6 +431,7 @@ class Profiles(Diagnostic):
 
 class DissipationProfiles(Diagnostic):
     def diagnostic(self, time, equations, uhat):
+        uhat = uhat.disturbance()
         gradu = uhat.grad()
         grad2u = gradu.grad().to_physical()
         gradu = gradu.to_physical()
@@ -450,7 +451,7 @@ class DissipationProfiles(Diagnostic):
             numpy.savetxt(
                 self.outfile,
                 (numpy.vstack([ epsij, sum(S), G ])).T,
-                header="t = {}\nz epsxx epsyy epszz epsxy epsxz epsyz S G".format(time)
+                header="t = {}\nz epsxx epsyy epszz epsxy epsxz epsyz epscc epscx epscy epscz S G".format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
