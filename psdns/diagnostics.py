@@ -33,7 +33,7 @@ class Diagnostic(object):
     be used as a diagnostic, however, it is recommended that
     diagnostics be derived from this base class.
     """
-    def __init__(self, tdump, grid, outfile=sys.stderr):
+    def __init__(self, tdump, grid, outfile=sys.stderr, append=False):
         """Create a diagnostic
 
         Each time the diagnostic is called, it checks to see if the
@@ -51,11 +51,12 @@ class Diagnostic(object):
         self._needs_close = False
         if grid.comm.rank != 0:
             return
+        self.append = append
         if hasattr(outfile, 'write'):
             #: The file in which to write output
             self.outfile = outfile
         else:
-            self.outfile = open(outfile, 'w')
+            self.outfile = open(outfile, 'a' if self.append else 'w')
             self._needs_close = True
 
     def __del__(self):
@@ -113,7 +114,8 @@ class StandardDiagnostics(Diagnostic):
             self.outfile,
             ['time'] + self.fields
             )
-        self.writer.writeheader()
+        if not self.append:
+            self.writer.writeheader()
 
     def divU(self, equation, uhat):
         return uhat[:3].div().norm()
@@ -416,14 +418,16 @@ class Profiles(Diagnostic):
             (u[i]*u[j]*u[k]).avg_xy()
             for i, j, k in [
                 (0, 0, 0), (1, 1, 1), (2, 2, 2), (0, 0, 1), (0, 0, 2),
-                (1, 1, 0), (1, 1, 2), (2, 2, 0), (2, 2, 1), (0, 1, 2)
+                (1, 1, 0), (1, 1, 2), (2, 2, 0), (2, 2, 1), (0, 1, 2),
+                (3, 0, 0), (3, 1, 1), (3, 2, 2), (3, 0, 1), (3, 0, 2),
+                (3, 1, 2), (3, 3, 0), (3, 3, 1), (3, 3, 2),
                 ]
             ]
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
                 (numpy.vstack([ uhat.grid.x[2,0,0,:], ubar[:4] ] + Rij + Rijk )).T,
-                header="t = {}\nz u v w c Rxx Ryy Rzz Rxy Rxz Ryz b ax ay az Rxxx Ryyy Rzzz Rxxy Rxxz Ryyx Ryyz Rzzx Rzzy Rxyz".format(time)
+                header="t = {}\nz u v w c Rxx Ryy Rzz Rxy Rxz Ryz cc ax ay az Rxxx Ryyy Rzzz Rxxy Rxxz Ryyx Ryyz Rzzx Rzzy Rxyz Rcxx Rcyy Rczz Rcxy Rcxz Rcyz Rccx Rccy Rccz".format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
@@ -472,14 +476,18 @@ class PressureProfiles(Diagnostic):
         p = p - pbar
         # Pressure diffusion flux
         pu = (p*u).avg_xy()
+        pnorm = (p*p).avg_xy()
         # Pressure strain
         gradu = uhat[:3].grad().to_physical()
         press_strain = (p*gradu).avg_xy()
+        # Pressure dissipation
+        gradp = p.to_spectral().grad().to_physical()
+        pdiss = (uhat[3].to_physical()*gradp).avg_xy()
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
-                numpy.vstack([ uhat.grid.x[2,0,0,:], pbar, pu, press_strain.reshape((9, -1)) ]).T,
-                header="t = {}\nz p pu pv pw pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz".format(time)
+                numpy.vstack([ uhat.grid.x[2,0,0,:], pbar, pnorm, pu, press_strain.reshape((9, -1)), pdiss ]).T,
+                header="t = {}\nz p prms pu pv pw pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz cdpdx cdpdy cdpdz".format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
