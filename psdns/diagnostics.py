@@ -454,7 +454,7 @@ class DissipationProfiles(Diagnostic):
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
-                (numpy.vstack([ epsij, sum(S), G ])).T,
+                (numpy.vstack([ uhat.grid.x[2,0,0,:], epsij, sum(S), G ])).T,
                 header="t = {}\nz epsxx epsyy epszz epsxy epsxz epsyz epscc epscx epscy epscz S G".format(time)
                 )
             self.outfile.write("\n\n")
@@ -464,30 +464,19 @@ class PressureProfiles(Diagnostic):
     press_routine = "pressure"
     
     def diagnostic(self, time, equations, uhat):
-        # Get velocity fluctuations
-        u = uhat[:3].to_physical()
-        ubar = u.avg_xy()
-        ubar = uhat.grid.comm.bcast(ubar)
-        u = u - ubar[:,numpy.newaxis,numpy.newaxis,:]
-        # Get pressure fluctuations
-        p = getattr(equations, self.press_routine)(uhat).to_physical()
-        pbar = p.avg_xy()
-        pbar = uhat.grid.comm.bcast(pbar)
-        p = p - pbar
+        ubar, u = uhat.to_physical().disturbance()
+        pbar, p = getattr(equations, self.press_routine)(uhat).to_physical().disturbance()
         # Pressure diffusion flux
         pu = (p*u).avg_xy()
         pnorm = (p*p).avg_xy()
         # Pressure strain
-        gradu = uhat[:3].grad().to_physical()
+        gradu = uhat.grad().to_physical()
         press_strain = (p*gradu).avg_xy()
-        # Pressure dissipation
-        gradp = p.to_spectral().grad().to_physical()
-        pdiss = (uhat[3].to_physical()*gradp).avg_xy()
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
-                numpy.vstack([ uhat.grid.x[2,0,0,:], pbar, pnorm, pu, press_strain.reshape((9, -1)), pdiss ]).T,
-                header="t = {}\nz p prms pu pv pw pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz cdpdx cdpdy cdpdz".format(time)
+                numpy.vstack([ uhat.grid.x[2,0,0,:], pbar, pnorm, pu, press_strain.reshape((12, -1)) ]).T,
+                header="t = {}\nz p prms pu pv pw pc pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz pdcdx pdcdy pdcdz".format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
