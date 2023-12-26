@@ -99,12 +99,12 @@ class SpectralGrid(object):
         self.pdims = numpy.broadcast_to(numpy.atleast_1d(pdims), (3,)) \
             if pdims else self.sdims
         self.box_size = numpy.broadcast_to(numpy.atleast_1d(box_size), (3,))
-        if self.sdims[0] > self.pdims[0] and self.sdims[0] % 2 == 0:
+        if self.sdims[0] < self.pdims[0] and self.sdims[0] % 2 == 0:
             warnings.warn(
                 "Truncating to an even number of modes in x: "
                 "see the manual for why you don't want to do this"
                 )
-        if self.sdims[1] > self.pdims[1] and self.sdims[1] % 2 == 0:
+        if self.sdims[1] < self.pdims[1] and self.sdims[1] % 2 == 0:
             warnings.warn(
                 "Truncating to an even number of modes in y: "
                 "see the manual for why you don't want to do this"
