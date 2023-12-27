@@ -481,7 +481,7 @@ class Boussinesq(RotationalNavierStokes):
         x1 = u.grid.box_size[2]/2
         x2 = u.grid.box_size[2]
         u[3] = (
-            profile((x[2] - x1)/delta1 + z[:,:,numpy.newaxis])
+            profile((x[2] - x1 - z[:,:,numpy.newaxis])/delta1)
             - profile(x[2]/delta2)
             - profile((x[2] - x2)/delta2)
             )
@@ -489,7 +489,12 @@ class Boussinesq(RotationalNavierStokes):
         s._data = numpy.ascontiguousarray(s._data)
         return s
 
-    def band(self, grid, kmin, kmax, seed=None):
+    def band(self, grid, kmin, kmax, seed=123):
+        if seed == None:
+            warnings.warn(
+                "A seed of None for Boussinesq.band() will result "
+                "in inconsistent initialization across MPI ranks."
+                )
         # Check kmax fits on the grid!
         x = grid.x[:2,:,:,0]
         z = numpy.zeros(shape=x[0].shape)
