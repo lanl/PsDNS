@@ -25,6 +25,7 @@ referred to as *global*, whereas information about a specific rank is
 *local*.
 """
 from functools import cached_property
+import pickle
 import warnings
 
 import numpy
@@ -109,11 +110,38 @@ class SpectralGrid(object):
                 "Truncating to an even number of modes in y: "
                 "see the manual for why you don't want to do this"
                 )
+        self.setup(cpu_dims)
+
+    def __getstate__(self):
+        return {
+            'sdims' : self.sdims,
+            'pdims' : self.pdims,
+            'box_size' : self.box_size
+            }
+
+    def checkpoint(self, filename):
+        with open(filename, "wb") as chkpt:
+            pickle.dump(self, chkpt)
+
+    @staticmethod
+    def read_checkpoint(
+            filename, cpu_dims=(0,0), aliasing_strategy='truncate',
+            comm=MPI.COMM_WORLD
+            ):
+        with open(filename, "rb") as chkpt:
+            grid = pickle.load(chkpt)
+        grid._aliasing_strategy = aliasing_strategy
+        grid.comm = comm
+        grid.setup(cpu_dims)
+        return grid
+
+    def setup(self, cpu_dims):
         self.decomp = MPI.Compute_dims(self.comm.size, cpu_dims)
         if self.decomp[0]*self.decomp[1] != self.comm.size:
             raise ValueError(
                 "Domain decomposition does not match the number of available processors."
                 )
+
         #: Communicator for swapping the z pencils to y pencils.
         self.comm_zy = self.comm.Split(self.comm.rank % self.decomp[0])
         #: Communicator for swapping the y pencils to x pencils.

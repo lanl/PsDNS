@@ -4,18 +4,14 @@ import numpy
 
 from psdns import *
 
-grid = SpectralGrid(
-    sdims=[2**5-1, 2**5-1, 2**7-1],
-    pdims=[3*2**4, 3*2**4, 3*2**6],
-    box_size=[2*numpy.pi, 2*numpy.pi, 8*numpy.pi]
-    )
+grid = SpectralGrid.read_checkpoint("data.grid")
 
 def add_vorticity(uhat):
     uhat[4:] = uhat[:3].curl()
 
 solver = Reader(
     dt = 1,
-    tfinal = 10,
+    tfinal = 100,
     diagnostics = [
         VTKDump(
             tdump=1, grid=grid,
