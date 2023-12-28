@@ -11,22 +11,23 @@ from psdns.equations.navier_stokes import Boussinesq
 
 
 grid = SpectralGrid(
-    sdims=[2**5-1, 2**5-1, 2**7-1],
-    pdims=[3*2**4, 3*2**4, 3*2**6],
-    box_size=[4*numpy.pi, 4*numpy.pi, 16*numpy.pi]
+    sdims=[21, 21, 683],
+    pdims=[32, 32, 1024],
+    box_size=[4*numpy.pi, 4*numpy.pi, 128*numpy.pi]
     )
-equations = Boussinesq(Re=100)
+grid.checkpoint("data.grid")
+equations = Boussinesq(Re=1)
 
 x = grid.x[:2,:,:,0]
 solver = RungeKutta(
     dt=0.01,
-    tfinal=20.0,
+    tfinal=200.0,
     equations=equations,
     ic=equations.perturbed_interface(
         grid,
-        1e-4*equations.band(grid, 1, 4)
-        + 0.01*numpy.cos(x[0]) * numpy.cos(x[1]),
-        numpy.sqrt(2*numpy.pi),
+        1.0e-3*equations.band(grid, 1, 4)
+        + 1.0e-1*numpy.cos(x[0]/2) * numpy.cos(x[1]/2),
+        0.1,
         0.1,
         ),
     diagnostics=[
