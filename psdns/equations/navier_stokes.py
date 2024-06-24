@@ -300,7 +300,7 @@ class NavierStokes(object):
         u[0] = numpy.where(k12 == 0, alpha, (alpha*kmag*k[1] + beta*k[0]*k[2])/(kmag*k12))
         u[1] = numpy.where(k12 == 0, beta, (- alpha*kmag*k[0] + beta*k[1]*k[2])/(kmag*k12))
         u[2] = numpy.where(k12 == 0, 0, -beta*k12/kmag)
-        u *= numpy.sqrt(energy(kmag, **params)/(2*numpy.pi*u.grid.k2))
+        u *= numpy.sqrt(u.grid.dk**3*energy(kmag, **params)/(2*numpy.pi*u.grid.k2))
         u[:,0,0,0] = 0
 
         return u

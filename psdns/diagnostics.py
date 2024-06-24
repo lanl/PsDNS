@@ -541,7 +541,7 @@ class Spectra(Diagnostic):
         """
         k, spectrum = self.integrate_shell(
             (uhat[:3]*uhat[:3].conjugate()).real/2,
-            1,
+            uhat.grid.dk,
             uhat.grid
             )
         if uhat.grid.comm.rank == 0:
