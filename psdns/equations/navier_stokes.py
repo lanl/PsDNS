@@ -62,7 +62,7 @@ class NavierStokes(object):
 
     Sc = property(_get_Sc, _set_Sc)
 
-    def rhs(self, uhat):
+    def rhs(self, time, uhat):
         r"""Compute the Navier-Stokes right-hand side
 
         Take the velocity and scalar fields in spectral space given by
@@ -547,7 +547,7 @@ class SimplifiedSmagorinsky(NavierStokes):
         super().__init__(**kwargs)
         self.Cs = Cs
 
-    def rhs(self, uhat):
+    def rhs(self, time, uhat):
         u = uhat.to_physical()
         vorticity = uhat.curl()
         nu_t = (self.Cs*uhat.grid.dx)**2 \
@@ -610,7 +610,7 @@ class Smagorinsky(SimplifiedSmagorinsky):
     The constructor is the same as for the
     :class:`SimplifiedSmagorinsky` class.
     """
-    def rhs(self, uhat):
+    def rhs(self, time, uhat):
         dx = numpy.sqrt(numpy.sum(uhat.grid.dx**2)/3)
         u = uhat.to_physical()
         gradu = uhat.grad().to_physical()
@@ -687,7 +687,7 @@ class KEpsilon(NavierStokes):
         self.Pr_e = Pr_e
         self.clip = clip
 
-    def rhs(self, uhat):
+    def rhs(self, time, uhat):
         r"""Compute the right-hand side for the :math:`k-\varepsilon` equations
 
         The :math:`K-\varepsilon` equations can be treated as

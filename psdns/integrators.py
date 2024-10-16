@@ -144,7 +144,7 @@ class Euler(Integrator):
             u^{n+1} = u^n + \Delta t F[u^n]
         """
         self.time += self.dt
-        self.uhat += self.dt*self.equations.rhs(self.uhat)
+        self.uhat += self.dt*self.equations.rhs(self.time, self.uhat)
 
 
 class ImplicitEuler(Integrator):
@@ -219,7 +219,8 @@ class ImplicitEuler(Integrator):
         self.uhat0[...] = self.uhat
         self.time += self.dt
         for i in range(self.niter):
-            dU = self.uhat0 - self.uhat + self.dt*self.equations.rhs(self.uhat)
+            dU = self.uhat0 - self.uhat + \
+              self.dt*self.equations.rhs(self.time, self.uhat)
             self.uhat += self.alpha*dU
             res = numpy.sqrt(self.uhat.grid.comm.bcast(dU.norm(), root=0))
             if self.uhat.grid.comm.rank == 0:
@@ -245,6 +246,7 @@ class RungeKutta(Integrator):
             self,
             a=[1/6, 1/3, 1/3, 1/6],
             b=[1/2, 1/2, 1, 0],
+            c=[0, 1/2, 1/2, 1],
             **kwargs):
         """Return a RungeKutta integrator.
 
@@ -261,6 +263,8 @@ class RungeKutta(Integrator):
         #: as :attr:`a`.  The last, and only the last, element must be
         #: zero.)
         self.b = b
+        #: Coefficients for the time levels.
+        self.c = c
         #: First intermediate storage array
         self.uhat0 = self.uhat.copy()
         #: Second intermediate storage array
@@ -290,8 +294,8 @@ class RungeKutta(Integrator):
         """
         self.uhat1[...] = self.uhat0[...] = self.uhat
         self.time += self.dt
-        for a, b in zip(self.a, self.b):
-            self.dU = self.equations.rhs(self.uhat)
+        for a, b, c in zip(self.a, self.b, self.c):
+            self.dU = self.equations.rhs(self.time+self.c, self.uhat)
             if b:
                 self.uhat[...] = self.uhat0 + b*self.dt*self.dU
             self.uhat1 += a*self.dt*self.dU

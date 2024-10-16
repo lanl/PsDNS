@@ -43,7 +43,7 @@ class Wave(object):
         """
         self.c = numpy.asarray(c)
 
-    def rhs(self, uhat):
+    def rhs(self, time, uhat):
         return -1j*numpy.tensordot(self.c, uhat.grid.k, 1)*uhat
 
 
@@ -69,7 +69,7 @@ class Burgers(object):
         """
         self.nu = nu
 
-    def rhs(self, uhat):
+    def rhs(self, time, uhat):
         u = uhat.to_physical()
         return -1j*uhat.grid.k[0]*(u*u).to_spectral()/2 \
             - uhat.grid.k2*self.nu*uhat
