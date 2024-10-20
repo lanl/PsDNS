@@ -295,7 +295,7 @@ class RungeKutta(Integrator):
         self.uhat1[...] = self.uhat0[...] = self.uhat
         self.time += self.dt
         for a, b, c in zip(self.a, self.b, self.c):
-            self.dU = self.equations.rhs(self.time+self.c, self.uhat)
+            self.dU = self.equations.rhs(self.time+c, self.uhat)
             if b:
                 self.uhat[...] = self.uhat0 + b*self.dt*self.dU
             self.uhat1 += a*self.dt*self.dU
