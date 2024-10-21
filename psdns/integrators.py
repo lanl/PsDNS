@@ -143,8 +143,8 @@ class Euler(Integrator):
 
             u^{n+1} = u^n + \Delta t F[u^n]
         """
-        self.time += self.dt
         self.uhat += self.dt*self.equations.rhs(self.time, self.uhat)
+        self.time += self.dt
 
 
 class ImplicitEuler(Integrator):
@@ -293,10 +293,10 @@ class RungeKutta(Integrator):
         implementation.
         """
         self.uhat1[...] = self.uhat0[...] = self.uhat
-        self.time += self.dt
         for a, b, c in zip(self.a, self.b, self.c):
-            self.dU = self.equations.rhs(self.time+c, self.uhat)
+            self.dU = self.equations.rhs(self.time+c*self.dt, self.uhat)
             if b:
                 self.uhat[...] = self.uhat0 + b*self.dt*self.dU
             self.uhat1 += a*self.dt*self.dU
         self.uhat[...] = self.uhat1
+        self.time += self.dt
