@@ -207,8 +207,8 @@ class SpectralGrid(object):
             numpy.amax(fftfreq0**2) + numpy.amax(fftfreq1**2)
             + numpy.amax(rfftfreq**2)
             )
-        self.dk = numpy.prod(self.k[:,1,1,1])**(1/3)
-        
+        self.dk = (fftfreq0[1]*fftfreq1[1]*rfftfreq[1])**(1/3)
+
         s1 = self.sdims[1] // 2 + 1
         aliased_size = self.pdims[1] - self.sdims[1]
         #: A list of MPI data types decomposing z pencils for
