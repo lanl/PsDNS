@@ -37,7 +37,7 @@ solver = RungeKutta(
             fields=['tke', 'dissipation', 'cavg', 'divU'],
             outfile="std.dat"
             ),
-        Profiles(tdump=0.1, grid=grid, outfile='profiles.dat'),
+        ProfilesConcentration(tdump=0.1, grid=grid, outfile='profiles.dat'),
         DissipationProfiles(tdump=0.1, grid=grid, outfile='dissipation.dat'),
         PressureProfiles(tdump=0.1, grid=grid, outfile='pressure.dat'),
         RapidPressProfiles(tdump=0.1, grid=grid, outfile='press_r.dat'),

@@ -405,34 +405,44 @@ class StandardDiagnostics(Diagnostic):
 
 
 class Profiles(Diagnostic):
+    moments2 = [
+        (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2),
+        ]
+    moments3 = [
+        (0, 0, 0), (1, 1, 1), (2, 2, 2), (0, 0, 1), (0, 0, 2),
+        (1, 1, 0), (1, 1, 2), (2, 2, 0), (2, 2, 1), (0, 1, 2),
+        ]
+    header = "t = {}\nz u v w c Rxx Ryy Rzz Rxy Rxz Ryz Rxxx Ryyy Rzzz Rxxy Rxxz Ryyx Ryyz Rzzx Rzzy Rxyz"
+    
     def diagnostic(self, time, equations, uhat):
         ubar, u = uhat.to_physical().disturbance()
-        Rij = [
-            (u[i]*u[j]).avg_xy()
-            for i, j in [
-                (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2), (3, 3),
-                (3, 0), (3, 1), (3, 2)
-                ]
-            ]
-        Rijk = [
-            (u[i]*u[j]*u[k]).avg_xy()
-            for i, j, k in [
-                (0, 0, 0), (1, 1, 1), (2, 2, 2), (0, 0, 1), (0, 0, 2),
-                (1, 1, 0), (1, 1, 2), (2, 2, 0), (2, 2, 1), (0, 1, 2),
-                (3, 0, 0), (3, 1, 1), (3, 2, 2), (3, 0, 1), (3, 0, 2),
-                (3, 1, 2), (3, 3, 0), (3, 3, 1), (3, 3, 2),
-                ]
-            ]
+        Rij = [ (u[i]*u[j]).avg_xy() for i, j in self.moments2 ]
+        Rijk = [ (u[i]*u[j]*u[k]).avg_xy() for i, j, k in self.moments3 ]
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
-                (numpy.vstack([ uhat.grid.x[2,0,0,:], ubar[:4] ] + Rij + Rijk )).T,
-                header="t = {}\nz u v w c Rxx Ryy Rzz Rxy Rxz Ryz cc ax ay az Rxxx Ryyy Rzzz Rxxy Rxxz Ryyx Ryyz Rzzx Rzzy Rxyz Rcxx Rcyy Rczz Rcxy Rcxz Rcyz Rccx Rccy Rccz".format(time)
+                (numpy.vstack([ uhat.grid.x[2,0,0,:], ubar[:4] ]
+                              + Rij + Rijk )).T,
+                header=self.header.format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
 
 
+class ProfilesConcentration(Profiles):
+    moments2 = [
+        (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2),
+        (3, 3), (3, 0), (3, 1), (3, 2)
+        ]
+    moments3 = [
+        (0, 0, 0), (1, 1, 1), (2, 2, 2), (0, 0, 1), (0, 0, 2),
+        (1, 1, 0), (1, 1, 2), (2, 2, 0), (2, 2, 1), (0, 1, 2),
+        (3, 0, 0), (3, 1, 1), (3, 2, 2), (3, 0, 1), (3, 0, 2),
+        (3, 1, 2), (3, 3, 0), (3, 3, 1), (3, 3, 2),
+        ]
+    header = "t = {}\nz u v w c Rxx Ryy Rzz Rxy Rxz Ryz cc ax ay az Rxxx Ryyy Rzzz Rxxy Rxxz Ryyx Ryyz Rzzx Rzzy Rxyz Rcxx Rcyy Rczz Rcxy Rcxz Rcyz Rccx Rccy Rccz"
+
+    
 class DissipationProfiles(Diagnostic):
     def diagnostic(self, time, equations, uhat):
         uhat = uhat.disturbance()

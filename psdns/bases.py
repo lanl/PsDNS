@@ -122,6 +122,7 @@ class SpectralGrid(object):
     def checkpoint(self, filename):
         with open(filename, "wb") as chkpt:
             pickle.dump(self, chkpt)
+        return self
 
     @staticmethod
     def read_checkpoint(
