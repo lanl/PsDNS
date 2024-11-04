@@ -408,10 +408,12 @@ class Profiles(Diagnostic):
     two_point_indicies = [
         (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2),
         ]
+
     three_point_indicies = [
         (0, 0, 0), (1, 1, 1), (2, 2, 2), (0, 0, 1), (0, 0, 2),
         (1, 1, 0), (1, 1, 2), (2, 2, 0), (2, 2, 1), (0, 1, 2),
         ]
+
     header = "t = {}\nz u v w Rxx Ryy Rzz Rxy Rxz Ryz Rxxx Ryyy Rzzz Rxxy Rxxz Ryyx Ryyz Rzzx Rzzy Rxyz"
     
     def diagnostic(self, time, equations, uhat):
@@ -434,15 +436,17 @@ class ProfilesWithConcentration(Profiles):
         (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2),
         (3, 3), (3, 0), (3, 1), (3, 2)
         ]
+
     three_point_indicies = [
         (0, 0, 0), (1, 1, 1), (2, 2, 2), (0, 0, 1), (0, 0, 2),
         (1, 1, 0), (1, 1, 2), (2, 2, 0), (2, 2, 1), (0, 1, 2),
         (3, 0, 0), (3, 1, 1), (3, 2, 2), (3, 0, 1), (3, 0, 2),
         (3, 1, 2), (3, 3, 0), (3, 3, 1), (3, 3, 2),
         ]
+
     header = "t = {}\nz u v w c Rxx Ryy Rzz Rxy Rxz Ryz cc ax ay az Rxxx Ryyy Rzzz Rxxy Rxxz Ryyx Ryyz Rzzx Rzzy Rxyz Rcxx Rcyy Rczz Rcxy Rcxz Rcyz Rccx Rccy Rccz"
 
-    
+
 class DissipationProfiles(Diagnostic):
     two_point_indicies = [ (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2), ]
     
@@ -477,12 +481,17 @@ class DissipationProfilesWithConcentration(DissipationProfiles):
         (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2),
         (3, 3), (3, 0), (3, 1), (3, 2)
         ]
+
     header = "t = {}\nz epsxx epsyy epszz epsxy epsxz epsyz epscc epscx epscy epscz S G"
 
-
+    
 class PressureProfiles(Diagnostic):
     press_routine = "pressure"
-    
+
+    num_components = 9
+
+    header = "t = {}\nz p prms pu pv pw pc pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz"
+
     def diagnostic(self, time, equations, uhat):
         ubar, u = uhat.to_physical().disturbance()
         pbar, p = getattr(equations, self.press_routine)(uhat).to_physical().disturbance()
@@ -495,12 +504,13 @@ class PressureProfiles(Diagnostic):
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
-                numpy.vstack([ uhat.grid.x[2,0,0,:], pbar, pnorm, pu, press_strain.reshape((12, -1)) ]).T,
-                header="t = {}\nz p prms pu pv pw pc pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz pdcdx pdcdy pdcdz".format(time)
+                numpy.vstack([
+                    uhat.grid.x[2,0,0,:], pbar, pnorm, pu,
+                    press_strain.reshape((self.num_components, -1)) ]).T,
+                header=self.header.format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
-
 
 class RapidPressProfiles(PressureProfiles):
     press_routine = "press_rapid"
@@ -511,6 +521,24 @@ class SlowPressProfiles(PressureProfiles):
 
 
 class BuoyantPressProfiles(PressureProfiles):
+    press_routine = "press_buoyant"
+
+
+class PressureProfilesWithConcentration(PressureProfiles):
+    num_components = 12
+
+    header = "t = {}\nz p prms pu pv pw pc pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz pdcdx pdcdy pdcdz"
+
+
+class RapidPressProfilesWithConcentration(PressureProfilesWithConcentration):
+    press_routine = "press_rapid"
+
+
+class SlowPressProfilesWithConcentration(PressureProfilesWithConcentration):
+    press_routine = "press_slow"
+
+
+class BuoyantPressProfilesWithConcentration(PressureProfilesWithConcentration):
     press_routine = "press_buoyant"
 
 

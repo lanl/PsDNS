@@ -25,6 +25,10 @@ solver = RungeKutta(
         FieldDump(tdump=1.0, grid=grid, filename="data{:04g}"),
         StandardDiagnostics(tdump=0.1, grid=grid, fields=['divU'], outfile="std.dat"),
         Profiles(tdump=1.0, grid=grid, outfile="profiles.dat"),
+        DissipationProfiles(tdump=1.0, grid=grid, outfile="diss.dat"),
+        PressureProfiles(tdump=1.0, grid=grid, outfile="press.dat"),
+        RapidPressProfiles(tdump=1.0, grid=grid, outfile="rapid.dat"),
+        SlowPressProfiles(tdump=1.0, grid=grid, outfile="slow.dat"),
         ],
     )
 solver.run()
