@@ -405,23 +405,23 @@ class StandardDiagnostics(Diagnostic):
 
 
 class Profiles(Diagnostic):
-    moments2 = [
+    two_point_indicies = [
         (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2),
         ]
-    moments3 = [
+    three_point_indicies = [
         (0, 0, 0), (1, 1, 1), (2, 2, 2), (0, 0, 1), (0, 0, 2),
         (1, 1, 0), (1, 1, 2), (2, 2, 0), (2, 2, 1), (0, 1, 2),
         ]
-    header = "t = {}\nz u v w c Rxx Ryy Rzz Rxy Rxz Ryz Rxxx Ryyy Rzzz Rxxy Rxxz Ryyx Ryyz Rzzx Rzzy Rxyz"
+    header = "t = {}\nz u v w Rxx Ryy Rzz Rxy Rxz Ryz Rxxx Ryyy Rzzz Rxxy Rxxz Ryyx Ryyz Rzzx Rzzy Rxyz"
     
     def diagnostic(self, time, equations, uhat):
         ubar, u = uhat.to_physical().disturbance()
-        Rij = [ (u[i]*u[j]).avg_xy() for i, j in self.moments2 ]
-        Rijk = [ (u[i]*u[j]*u[k]).avg_xy() for i, j, k in self.moments3 ]
+        Rij = [ (u[i]*u[j]).avg_xy() for i, j in self.two_point_indicies ]
+        Rijk = [ (u[i]*u[j]*u[k]).avg_xy() for i, j, k in self.three_point_indicies ]
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
-                (numpy.vstack([ uhat.grid.x[2,0,0,:], ubar[:4] ]
+                (numpy.vstack([ uhat.grid.x[2,0,0,:], ubar ]
                               + Rij + Rijk )).T,
                 header=self.header.format(time)
                 )
@@ -429,12 +429,12 @@ class Profiles(Diagnostic):
             self.outfile.flush()
 
 
-class ProfilesConcentration(Profiles):
-    moments2 = [
+class ProfilesWithConcentration(Profiles):
+    two_point_indicies = [
         (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2),
         (3, 3), (3, 0), (3, 1), (3, 2)
         ]
-    moments3 = [
+    three_point_indicies = [
         (0, 0, 0), (1, 1, 1), (2, 2, 2), (0, 0, 1), (0, 0, 2),
         (1, 1, 0), (1, 1, 2), (2, 2, 0), (2, 2, 1), (0, 1, 2),
         (3, 0, 0), (3, 1, 1), (3, 2, 2), (3, 0, 1), (3, 0, 2),
@@ -444,6 +444,10 @@ class ProfilesConcentration(Profiles):
 
     
 class DissipationProfiles(Diagnostic):
+    two_point_indicies = [ (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2), ]
+    
+    header = "t = {}\nz epsxx epsyy epszz epsxy epsxz epsyz S G"
+    
     def diagnostic(self, time, equations, uhat):
         uhat = uhat.disturbance()
         gradu = uhat.grad()
@@ -451,10 +455,7 @@ class DissipationProfiles(Diagnostic):
         gradu = gradu.to_physical()
         epsij = [
             (gradu[i]*gradu[j]).avg_xy(axis=(0,))
-            for i, j in [
-                (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2), (3, 3),
-                (3, 0), (3, 1), (3, 2)
-                ]
+            for i, j in self.two_point_indicies
             ]
         S =  [
             (gradu[i, k]*gradu[j, k]*gradu[i, j]).avg_xy()
@@ -465,10 +466,19 @@ class DissipationProfiles(Diagnostic):
             numpy.savetxt(
                 self.outfile,
                 (numpy.vstack([ uhat.grid.x[2,0,0,:], epsij, sum(S), G ])).T,
-                header="t = {}\nz epsxx epsyy epszz epsxy epsxz epsyz epscc epscx epscy epscz S G".format(time)
+                header=self.header.format(time)
                 )
             self.outfile.write("\n\n")
             self.outfile.flush()
+
+
+class DissipationProfilesWithConcentration(DissipationProfiles):
+    two_point_indicies = [
+        (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2),
+        (3, 3), (3, 0), (3, 1), (3, 2)
+        ]
+    header = "t = {}\nz epsxx epsyy epszz epsxy epsxz epsyz epscc epscx epscy epscz S G"
+
 
 class PressureProfiles(Diagnostic):
     press_routine = "pressure"

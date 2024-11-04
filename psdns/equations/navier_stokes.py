@@ -305,6 +305,75 @@ class NavierStokes(object):
 
         return u
 
+    def shear(self, grid, d, modes=[ ( 1e-1, 1, 0 ), ( 1e-2, 0, 1 ) ]):
+        r"""Initialize a perturbed shear layer.
+
+        This method returns an initial condition for a shear layer
+        with superimposed perturbations.  The shear layer is defined
+        by an error-function profile of width *d*, and, to satisfy the
+        periodic boundary conditions, is really an infinite series of
+        alternating-direction shear-layers at locations :math:`z=0,
+        L_z/2, L, \ldots`, where :math:`L_z` is the extent of the
+        domain in the vertial direction.  This follows the approach in
+        [Sharan2019]_.
+
+        There are various ways of introducting perturbations, of
+        varying levels of physical fidelity.  For small amplitute
+        perturbations, one could introduce disturbances obtained from
+        linear stability theory.  In order to simplify things, this
+        routine uses an analytic expression to provide a disturbance
+        that looks similar to on from linear theory.  We use a
+        disturbance of the form:
+
+        .. math::
+
+          u'(x, y, z)
+          =  A f' \left( \frac{z}{\gamma} \right)
+          \sin ( \alpha x - \phi_x ) \cos ( \beta y - \phi_y )
+
+          v'(x, y, z)
+          =  A f' \left( \frac{z}{\gamma} \right)
+          \sin ( \alpha x - \phi_x ) \cos ( \beta y - \phi_y )
+
+          w'(x, y, z)
+          = - A f \left( \frac{z}{\gamma} \right)
+          \sin ( \alpha x - \phi_x ) \cos ( \beta y - \phi_y )
+
+        This will produce a disturbance the satisfies continuity
+        provided that :math:`\alpha + \beta = \gamma^{-1}`.  For the
+        disturbance function, we choose a Gaussian, :math:`f(\eta) =
+        \exp ( - \eta^2 )`.
+
+        In addition to the shear-layer thickness, users provide
+        *modes*, a list of 3-tuples, each of which is of the form
+        :math:`(A, \alpha, \beta)`.  A default option which is
+        observed to lead to a reasonable transition is included.
+
+        .. note::
+
+          In order for the initial conditions to satisfy periodicity
+          in the normal planes, :math:`\alpha, \beta` and the box size
+          must be chosen such that :math:`\alpha L_x, \beta L_y` are
+          always multiples of :math:`2 \pi`.  The code does not
+          enforce this condition.
+        """
+        u = PhysicalArray(grid, (3,))
+        u[0] = scipy.special.erf(grid.x[2]/d) \
+          - scipy.special.erf((grid.x[2] - grid.box_size[2]/2) / d) \
+          + scipy.special.erf((grid.x[2] - grid.box_size[2]) / d)
+        z = grid.x[2] - grid.box_size[2] / 2
+        for A, a, b in modes:
+            c = 1 / ( a + b )
+            u[0] = u[0] - 2 * A * z / c * numpy.exp(-(z/c)**2) \
+              * numpy.sin(a*grid.x[0]) * numpy.cos(b*grid.x[1])
+            u[1] = u[1] - 2 * A * z / c * numpy.exp(-(z/c)**2) \
+              * numpy.cos(a*grid.x[0]) * numpy.sin(b*grid.x[1])
+            u[2] = u[2] - A * numpy.exp(-(z/c)**2) \
+              * numpy.cos(a*grid.x[0]) * numpy.cos(b*grid.x[1])
+        s = u.to_spectral()
+        s._data = numpy.ascontiguousarray(s._data)
+        return s
+
 
 class RotationalNavierStokes(NavierStokes):
     r"""Incompressible Navier-Stokes in rotational form

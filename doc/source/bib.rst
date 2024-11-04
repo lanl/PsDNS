@@ -32,6 +32,12 @@
    `Numerical experiments in homogeneous turbulence
    <https://ntrs.nasa.gov/api/citations/19810022965/downloads/19810022965.pdf>`_,
    NASA TM-81315
+
+.. [Sharan2019] Sharan, N., Matheou, G., and Dimotakis, P. E.
+   `Turbulent shear-layer mixing: initial conditions, and
+   direct-numerical and large-eddy simulations
+   <https://doi.org/10.1017/jfm.2019.591>`_,
+   Journal of Fluid Mechanics, 877:35--81, 2019
    
 .. [Taylor1938] Taylor, G. I. and Green, A. E.,
    `Mechanism of the production of small eddies from large ones
