@@ -442,20 +442,7 @@ class SpectralArray(np.lib.mixins.NDArrayOperatorsMixin):
         the data shape will be be determined by the local spectral
         dimensions, and the default data type is complex.
 
-        So, for examFile "/vast/home/ananyo/psdns/examples/psdns/integrators.py", line 87, in run
-    self.diagnostics()
-  File "/vast/home/ananyo/psdns/examples/psdns/integrators.py", line 79, in diagnostics
-    diagnostic(self.time, self.equations, self.uhat)
-  File "/vast/home/ananyo/psdns/examples/psdns/diagnostics.py", line 65, in __call__
-    self.diagnostic(time, equations, uhat)
-  File "/vast/home/ananyo/psdns/examples/psdns/diagnostics.py", line 378, in diagnostic
-    **{field: getattr(self, field)(equations, uhat)
-  File "/vast/home/ananyo/psdns/examples/psdns/diagnostics.py", line 378, in <dictcomp>
-    **{field: getattr(self, field)(equations, uhat)
-  File "/vast/home/ananyo/psdns/examples/psdns/diagnostics.py", line 136, in dissipation
-    enstrophy = [(1j*uhat.grid.k[i]*uhat[j]).norm()
-  File "/vast/home/ananyo/psdns/examples/psdns/diagnostics.py", line 136, in <listcomp>
-    enstrophy = [(1j*uhat.grid.k[i]*uhat[j]).norm()ple, the normal way to create a
+        So, for example, the normal way to create a
         :class:`SpectralArray` would be::
 
             s = SpectralArray(SpectralGrid(8), (3,))
