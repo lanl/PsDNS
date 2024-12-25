@@ -429,9 +429,9 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         #: The shape of the local data array
         self.shape = self._data.shape
 
-    def __array__(self, dtype=None):
+    def __array__(self, dtype=None, copy=None):
         """Return a view of the data as an :class:`numpy.ndarray`."""
-        return numpy.array(self._data, dtype, copy=False)
+        return numpy.array(self._data, dtype=dtype, copy=copy)
 
     def __str__(self):
         return str(self._data)
@@ -652,8 +652,9 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         #: The shape of the local data array
         self.shape = self._data.shape
 
-    def __array__(self, dtype=None):
-        return numpy.array(self._data, dtype, copy=False)
+    def __array__(self, dtype=None, copy=None):
+        """Return a view of the data as an :class:`numpy.ndarray`."""
+        return numpy.array(self._data, dtype=dtype, copy=copy)
 
     def __str__(self):
         return str(self._data)
