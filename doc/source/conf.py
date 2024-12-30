@@ -99,7 +99,6 @@ ax = fig.add_subplot(111, projection='3d')
    
 plt.tight_layout()
 
-ax.set_frame_on(False)
 ax.xaxis.set_pane_color((0,0,0,0))
 ax.yaxis.set_pane_color((0,0,0,0))
 ax.zaxis.set_pane_color((0,0,0,0))
