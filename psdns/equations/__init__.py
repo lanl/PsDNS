@@ -17,11 +17,18 @@ the :meth:`rhs` method takes :math:`\boldsymbol{U}` and returns
 Since normally only a single equation is needed in a given script,
 no equations are imported by default when importing :mod:`psdns`.
 
-Users can also implement their own equations.  There is no need to
-subclass from any specific base class, any class that implements a
-:meth:`rhs` method can be used as an equation.
+Users can also implement their own equations.  The :class:`Equation`
+class is provided as a base class for equation classes.
 
 The :mod:`~psdns.equations` sub-module also includes some functions
 that return initial conditions for certain canonical problems, either
 in the form of stand-alone functions, or class methods.
 """
+class Equation(object):
+    """A generic equation base class."""
+    def rhs(self, uhat):
+        """The :meth:`rhs` needs to be implemented in sub-classes."""
+        return NotImplemented
+
+    def _to_json(self):
+        return vars(self)

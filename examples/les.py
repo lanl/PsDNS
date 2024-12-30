@@ -17,7 +17,7 @@ solver = RungeKutta(
     equations=equations,
     ic=equations.taylor_green_vortex(grid),
     diagnostics=[
-        StandardDiagnostics(tdump=0.1, grid=grid, outfile="tgv.dat"),
+        StandardDiagnostics(tdump=0.1, grid=grid, outfile="les.dat"),
         Spectra(tdump=1.0, grid=grid, outfile="spectra.dat"),
         ],
     )

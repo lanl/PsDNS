@@ -10,7 +10,7 @@ grid = SpectralGrid(sdims=2**6-1, pdims=3*2**5)
 equations = NavierStokes(Re=400)
 
 solver = RungeKutta(
-    dt=0.01,
+    dt=0.1,
     tfinal=10.0,
     equations=equations,
     ic=equations.taylor_green_vortex(
@@ -24,3 +24,4 @@ solver = RungeKutta(
     )
 solver.run()
 solver.print_statistics()
+solver.json("tgv.json")

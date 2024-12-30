@@ -116,9 +116,17 @@ class SpectralGrid(object):
         return {
             'sdims' : self.sdims,
             'pdims' : self.pdims,
-            'box_size' : self.box_size
+            'box_size' : self.box_size,
             }
 
+    def _to_json(self):
+        return {
+            'sdims' : self.sdims.tolist(),
+            'pdims' : self.pdims.tolist(),
+            'box_size' : self.box_size.tolist(),
+            }
+        
+    
     def checkpoint(self, filename):
         with open(filename, "wb") as chkpt:
             pickle.dump(self, chkpt)

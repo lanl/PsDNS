@@ -4,9 +4,9 @@ import numpy
 import scipy.special
 
 from psdns import *
+from psdns.equations import Equation
 
-
-class NavierStokes(object):
+class NavierStokes(Equation):
     r"""Incompressible Navier-Stokes equations
 
     The incompressible Navier-Stokes equations for an incompressible

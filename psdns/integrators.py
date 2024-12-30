@@ -21,10 +21,20 @@ as :math:`u^i`.  The index :math:`i` is the discrete time step,
 dimension higher than three, corresponding to three space dimensions and
 then the dimensionality of the solution vector.
 """
+import json
 import sys
-from time import time as walltime
+import time
 
 import numpy
+
+
+class ExtendableEncoder(json.JSONEncoder):
+    """An extended JSON encoder that checks for a _to_json() method for classes."""
+    def default(self, obj):
+        try:
+            return obj._to_json()
+        except:
+            return super().default(obj)
 
 
 class Integrator(object):
@@ -85,12 +95,18 @@ class Integrator(object):
         each step, until the simulation time reaches :attr:`tfinal`.
         """
         self.diagnostics()
-        time0 = walltime()
+        time0 = time.perf_counter()
+        ptime0 = time.process_time()
         while self.time < self.tfinal - 1e-8:
             self.step()
             self.diagnostics()
-        self.total_walltime = self.uhat.grid.comm.reduce(walltime() - time0)
-
+        self.total_wall_time = self.uhat.grid.comm.reduce(
+            time.perf_counter() - time0
+            )
+        self.total_proc_time = self.uhat.grid.comm.reduce(
+            time.process_time() - ptime0
+            )
+        
     def step(self):
         """Advance a single timestep.
         """
@@ -101,9 +117,35 @@ class Integrator(object):
         """
         if self.uhat.grid.comm.rank == 0:
             print(
-                "Total compute time = ", self.total_walltime,
+                "Total wall time = ", self.total_wall_time,
+                "\nTotal process time = ", self.total_proc_time,
                 file=sys.stderr
                 )
+
+    def _to_json(self):
+        return {
+            'dt': self.dt,
+            'time': self.time,
+            'tfinal': self.tfinal,
+            'total_wall_time': self.total_wall_time,
+            'total_proc_time': self.total_proc_time,
+            'equations': self.equations,
+            }
+
+    def json(self, filename):
+        """Save state to JSON file.
+
+        Writes the key state information to *filename* in JSON format for reading by
+        post-processing tools.
+        """
+        if self.uhat.grid.comm.rank == 0:
+            with open(filename, "w") as fp:
+                json.dump(
+                    (self, self.uhat.grid),
+                    fp,
+                    cls=ExtendableEncoder,
+                    indent="  ",
+                    )
 
 
 class Reader(Integrator):

@@ -6,9 +6,10 @@ differential equations.
 import numpy
 
 from psdns import *
+from psdns.equations import Equation
 
 
-class Wave(object):
+class Wave(Equation):
     r"""Wave equation
 
     The first-order three-dimensional wave equation is
@@ -47,7 +48,7 @@ class Wave(object):
         return -1j*numpy.tensordot(self.c, uhat.grid.k, 1)*uhat
 
 
-class Burgers(object):
+class Burgers(Equation):
     r"""One-dimensional viscous Burgers equation
 
     The viscous Burgers equation in one dimensions is
