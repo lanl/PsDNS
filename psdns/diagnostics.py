@@ -576,7 +576,7 @@ class Spectra(Diagnostic):
         spectrum = grid.comm.reduce(spectrum)
         ispectrum = grid.comm.reduce(ispectrum)
         if grid.comm.rank == 0:
-            spectrum *= 4*numpy.pi*k**2/(ispectrum/3)
+            spectrum *= 4*numpy.pi*k**2/(ispectrum/3)/numpy.prod(grid.dk)
         return k, spectrum
         
     def diagnostic(self, time, equations, uhat):
@@ -589,7 +589,7 @@ class Spectra(Diagnostic):
         """
         k, spectrum = self.integrate_shell(
             (uhat[:3]*uhat[:3].conjugate()).real/2,
-            uhat.grid.dk,
+            numpy.prod(uhat.grid.dk)**(1/3),
             uhat.grid
             )
         if uhat.grid.comm.rank == 0:

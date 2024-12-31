@@ -190,34 +190,33 @@ class SpectralGrid(object):
         self.x = self.dx[:,numpy.newaxis, numpy.newaxis, numpy.newaxis] \
             * numpy.mgrid[self.local_physical_slice]
         k = numpy.mgrid[self.local_spectral_slice]
-        # Note, use sample spacing/2pi to get radial frequencies, rather
-        # than circular frequencies.
-        fftfreq0 = numpy.fft.fftfreq(self.pdims[0], self.dx[0]/(2*numpy.pi))[
+        fftfreq0 = numpy.fft.fftfreq(self.pdims[0], self.dx[0])[
             [*range(0, (self.sdims[0]+1)//2), *range(-(self.sdims[0]//2), 0)]
             ]
-        fftfreq1 = numpy.fft.fftfreq(self.pdims[1], self.dx[1]/(2*numpy.pi))[
+        fftfreq1 = numpy.fft.fftfreq(self.pdims[1], self.dx[1])[
             [*range(0, (self.sdims[1]+1)//2), *range(-(self.sdims[1]//2), 0)]
             ]
         rfftfreq = numpy.fft.rfftfreq(
-            self.pdims[2], self.dx[2]/(2*numpy.pi)
+            self.pdims[2], self.dx[2]
             )[:self.sdims[2]//2+1]
         #: The local spectral space mesh (wavenumbers)
-        self.k = numpy.array([
+        self.k = (2*numpy.pi)*numpy.array([
             fftfreq0[k[0]],
             fftfreq1[k[1]],
             rfftfreq[k[2]]
             ])
+        # Note, the factor of 2 pi is to get radial frequencies, rather
+        # than circular frequencies.
         #: The local wavenumber magnitude squared.
         self.k2 = numpy.sum(self.k*self.k, axis=0)
         #: The local wavenumber magnitude.
         self.kmag = numpy.sqrt(self.k2)
         #: The global maximum wavenumber magnitude.
-        self.kmax = numpy.sqrt(
+        self.kmax = 2*numpy.pi*numpy.sqrt(
             numpy.amax(fftfreq0**2) + numpy.amax(fftfreq1**2)
             + numpy.amax(rfftfreq**2)
             )
-        self.dk = (fftfreq0[1]*fftfreq1[1]*rfftfreq[1])**(1/3)
-
+        self.dk = 2*numpy.pi/self.box_size
         s1 = self.sdims[1] // 2 + 1
         aliased_size = self.pdims[1] - self.sdims[1]
         #: A list of MPI data types decomposing z pencils for
@@ -512,7 +511,8 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         i0 = numpy.array([*range(0, N[0]//2+1), *range(-((N[0]-1)//2), 0)])
         t1 = numpy.fft.rfft(
                  self._data,
-                 axis=-1
+                 axis=-1,
+                 norm='forward',
                  )
         t1 = numpy.ascontiguousarray(t1)
         t2 = numpy.zeros(
@@ -545,8 +545,9 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             )
         t3 = numpy.fft.fft(
                  t2,
-                 axis=-2
-                 )
+                 axis=-2,
+                 norm='forward',
+            )
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[1] > N[1] and N[1] % 2 == 0:
                 t3[..., :, N[1]//2, :] = \
@@ -576,6 +577,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         t5 = numpy.fft.fft(
             t4,
             axis=-3,
+            norm='forward',
             )
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[0] > N[0] and N[0] % 2 == 0:
@@ -584,7 +586,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         if self.grid._aliasing_strategy == 'truncate':
             if M[0] > N[0] and N[0] % 2 == 0:
                 t5[..., N[0]//2, :, :] = 0
-        t5 = t5[..., i0, :, :]/numpy.prod(self.grid.pdims)
+        t5 = t5[..., i0, :, :]
         return SpectralArray(self.grid, numpy.ascontiguousarray(t5))
 
     def norm(self):
@@ -807,7 +809,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             if M[0] > N[0] and N[0] % 2 == 0:
                 s[..., N[0]//2, :, :] *= 0.5
                 s[..., -(N[0]//2), :, :] = s[..., N[0]//2, :, :]
-        t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
+        t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3, norm='forward'))
         t2 = numpy.zeros(
             self.shape[:-3]
             + (self.grid._local_x_slice.stop
@@ -830,7 +832,8 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                 t2[..., :, -(N[1]//2), :] = t2[..., :, N[1]//2, :]
         t3 = numpy.ascontiguousarray(numpy.fft.ifft(
             t2,
-            axis=-2
+            axis=-2,
+            norm='forward',
             ))
         t4 = numpy.zeros(
             self.shape[:-3]
@@ -851,8 +854,9 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         t5 = numpy.fft.irfft(
             t4,
             n=self.grid.x.shape[3],
-            axis=-1
-            )*numpy.prod(self.grid.pdims)
+            axis=-1,
+            norm='forward',
+            )
         return PhysicalArray(self.grid, t5)
 
     def grad(self):

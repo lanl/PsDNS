@@ -113,7 +113,7 @@ class NavierStokes(Equation):
         return numpy.concatenate((du, dc))
 
     def nonlinear(self, uhat, u):
-        """Compute the non-linear term for the Navier-Stokes operator
+        r"""Compute the non-linear term for the Navier-Stokes operator
 
         Return the non-linear operator from the momentume equatiom,
         :math:`\widehat{u_k u_{j,k}}`, computed psuedo-spectrally, using
@@ -300,7 +300,7 @@ class NavierStokes(Equation):
         u[0] = numpy.where(k12 == 0, alpha, (alpha*kmag*k[1] + beta*k[0]*k[2])/(kmag*k12))
         u[1] = numpy.where(k12 == 0, beta, (- alpha*kmag*k[0] + beta*k[1]*k[2])/(kmag*k12))
         u[2] = numpy.where(k12 == 0, 0, -beta*k12/kmag)
-        u *= numpy.sqrt(u.grid.dk**3*energy(kmag, **params)/(2*numpy.pi*u.grid.k2))
+        u *= numpy.sqrt(numpy.prod(u.grid.dk)*energy(kmag, **params)/(2*numpy.pi*u.grid.k2))
         u[:,0,0,0] = 0
 
         return u

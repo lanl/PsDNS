@@ -99,6 +99,40 @@ where :math:`N = N_x N_y N_z`, and
           \frac{2\pi}{L} i \left( x_p k + y_q l + z_r m \right)
         \right)
 
+Normalization
+-------------
+
+There are several normalization conventions for the DFT.  The one used
+in PsDNS is what the :mod:`numpy.fft` module calls the ``forward``
+normalization.  In this normalization, a sine wave of amplitude one
+will have an amplitude one Fourier coefficient after the DFT.
+Physically, this means the amplitude of each mode represents the
+energy in the mode, whereas a normalization rescaled by the number of
+modes (what :mod:`numpy.fft` calls ``backward``) would mean the
+amplitude represents the energy density.
+
+Intuitively, the difference between these is demostratred by
+considering two cases, one initialized in a single mode, the other by
+a continuous spectra.  If we were to refine the grid, the single mode
+case would still have only one mode initialized on the finer grid, so
+in the forward normalization, the mode amplitude should remain
+unchanged.  For the continuous spectra, more modes would be used for a
+given portion of the spectrum, so the mode amplitudes would need to be
+correspondingly reduced.  (With the backward normalization, the
+opposite would be true: as the grid is refined the continuous spectrum
+would remain unchanged, but a single mode, which can be thought of as
+the discretiziation of a delta function, would change.)
+
+This must be kept in mind both in setting the initial conditions (see
+the
+:meth:`~psdns.equations.navier_stokes.NavierStokes.taylor_green_vortex`
+method, which initializes a single mode, and the
+:meth:`~psdns.equations.navier_stokes.NavierStokes.rogallo` method
+which uses a continuous spectrum) and for post-processing (see the
+:class:`~psdns.diagnostics.Spectra`, which re-normalizes to dump
+spectra of the energy density.
+
+
 Real Transforms
 ---------------
 
