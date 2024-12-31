@@ -132,7 +132,7 @@ class Integrator(object):
             'equations': self.equations,
             }
 
-    def json(self, filename):
+    def json(self, filename="case.json"):
         """Save state to JSON file.
 
         Writes the key state information to *filename* in JSON format for reading by

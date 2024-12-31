@@ -6,7 +6,7 @@ A simple psuedo-spectral DNS which recreates one of the cases from
 from psdns import *
 from psdns.equations.navier_stokes import NavierStokes
 
-grid = SpectralGrid(sdims=2**8, pdims=3*2**7)
+grid = SpectralGrid(sdims=171, pdims=256)
 equations = NavierStokes(Re=1000)
 
 solver = RungeKutta(
@@ -19,7 +19,7 @@ solver = RungeKutta(
         ),
     diagnostics=[
         StandardDiagnostics(
-            tdump=0.1, grid=grid, outfile="dns.dat",
+            tdump=0.01, grid=grid, outfile="dns.dat",
             fields=['tke', 'dissipation', 'S'],
             ),
         Spectra(tdump=1.0, grid=grid, outfile="spectra.dat"),
@@ -27,3 +27,5 @@ solver = RungeKutta(
     )
 solver.run()
 solver.print_statistics()
+solver.json()
+
