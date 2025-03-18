@@ -37,12 +37,12 @@ solver = RungeKutta(
             fields=['tke', 'dissipation', 'cavg', 'divU'],
             outfile="std.dat"
             ),
-        ProfilesConcentration(tdump=0.1, grid=grid, outfile='profiles.dat'),
-        DissipationProfiles(tdump=0.1, grid=grid, outfile='dissipation.dat'),
-        PressureProfiles(tdump=0.1, grid=grid, outfile='pressure.dat'),
-        RapidPressProfiles(tdump=0.1, grid=grid, outfile='press_r.dat'),
-        SlowPressProfiles(tdump=0.1, grid=grid, outfile='press_s.dat'),
-        BuoyantPressProfiles(tdump=0.1, grid=grid, outfile='press_b.dat'),
+        ProfilesWithConcentration(tdump=0.1, grid=grid, outfile='profiles.dat'),
+        DissipationProfilesWithConcentration(tdump=0.1, grid=grid, outfile='dissipation.dat'),
+        PressureProfilesWithConcentration(tdump=0.1, grid=grid, outfile='pressure.dat'),
+        RapidPressProfilesWithConcentration(tdump=0.1, grid=grid, outfile='press_r.dat'),
+        SlowPressProfilesWithConcentration(tdump=0.1, grid=grid, outfile='press_s.dat'),
+        BuoyantPressProfilesWithConcentration(tdump=0.1, grid=grid, outfile='press_b.dat'),
         ],
     )
 solver.run()
