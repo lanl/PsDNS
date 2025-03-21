@@ -25,7 +25,7 @@ To run a specific set of tests, provide the name of the tests, e.g.::
 The scaling tests will only run if run with MPI and sufficient tasks
 are allocated.  On most systems the syntax is::
 
-  PYTHONPATH=. mpirun -np 8 python -m unittest -v psdns.tests.test_scalings
+  PYTHONPATH=. mpirun -np 8 python -m unittest -v psdns.tests.test_scaling
 
 The :mod:`~psdns.tests` module includes a customized :class:`TestCase`
 class for use in PsDNS tests.

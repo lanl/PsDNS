@@ -61,39 +61,40 @@ class ScalingTest(tests.TestCase):
         diagnostics=[]
         )
 
-    def plot_wall_time(
-            self, ax, total_walltimes, ncpus, label="",
-            scaling='strong'):
-        r"""Plot the wall clock time.
+    def plot_time(
+            self, ax, total_times, ncpus, label="", scaling='strong'):
+        r"""Plot the run time.
 
-        Given a sequence of *total_walltimes* and *ncpus* (really number
-        of MPI ranks), plot the total wall clock time on *ax*, which is
+        Given a sequence of *total_times* and *ncpus* (really number
+        of MPI ranks), plot the per-task run time on *ax*, which is
         a :class:`matplotlib.axes.Axes`.  An optional *label* for the
         plot legend can also be provided.  If *scaling* is ``'strong'``,
         then a line showing perfect speedup
         (:math:`N_\mathrm{Ranks}^{-1}`) is shown for reference.  For
-        ``'weak'`` scaling, the reference line is a constant.
+        ``'weak'`` scaling, the reference line is a constant.  (The
+        total time is defined as the sum of the times on each MPI
+        rank.)
         """
-        walltimes = total_walltimes/ncpus
-        ax.plot(ncpus, walltimes, 's', label=label)
+        times = total_times/ncpus
+        ax.plot(ncpus, times, 's', label=label)
         if scaling == 'strong':
-            ax.plot(ncpus, walltimes[0]*ncpus[0]/ncpus, 'k--')
+            ax.plot(ncpus, times[0]*ncpus[0]/ncpus, 'k--')
         elif scaling == 'weak':
             ax.plot(
                 [1, ncpus[-1]],
-                [walltimes[0], walltimes[0]],
+                [times[0], times[0]],
                 '--k',
                 )
         ax.set_xlabel("Number of MPI ranks")
-        ax.set_ylabel("Wall time (s)")
+        ax.set_ylabel("Run Time (s)")
         ax.set_xscale('log')
         ax.set_yscale('log')
         ax.legend()
 
-    def plot_speedup(self, ax, total_walltimes, ncpus):
+    def plot_speedup(self, ax, total_times, ncpus):
         """Plot the parallel speedup.
 
-        Given a sequence of *total_walltimes* and *ncpus* (really number
+        Given a sequence of *total_times* and *ncpus* (really number
         of MPI ranks), plot the speedup on *ax*, which is a
         :class:`matplotlib.axes.Axes`.  Note that the speedup is
         computed relative to the lowest rank case run, which in general
@@ -103,7 +104,7 @@ class ScalingTest(tests.TestCase):
         """
         ax.plot(
             ncpus,
-            total_walltimes[0]*ncpus/total_walltimes,
+            total_times[0]*ncpus/total_times,
             's',
             )
         ax.plot(
@@ -116,10 +117,10 @@ class ScalingTest(tests.TestCase):
         ax.set_xscale('log')
         ax.set_yscale('log')
 
-    def plot_efficiency(self, ax, total_walltimes, ncpus):
+    def plot_efficiency(self, ax, total_times, ncpus):
         """Plot the parallel efficiency.
 
-        Given a sequence of *total_walltimes* and *ncpus* (really number
+        Given a sequence of *total_times* and *ncpus* (really number
         of MPI ranks), plot the parallel efficiency on *ax*, which is a
         :class:`matplotlib.axes.Axes`.  Note the caveat applies here as
         for :meth:`plot_speedup`.
@@ -129,7 +130,7 @@ class ScalingTest(tests.TestCase):
         """
         ax.plot(
             ncpus,
-            total_walltimes[0]/total_walltimes,
+            total_times[0]/total_times,
             's'
             )
         ax.plot(
@@ -154,14 +155,14 @@ class ScalingTest(tests.TestCase):
         The return value is a list of runtimes (total wall clock time
         used by each rank) for the corresponding runs.
         """
-        total_walltimes = []
+        total_times = []
         for ncpu, grid in zip(ncpus, grids):
             # Only run on `ncpu` processes
             if MPI.COMM_WORLD.rank < ncpu:
                 solver = self.integrator(ic=self.ic(grid))
                 solver.run()
-                total_walltimes.append(solver.total_walltime)
-        return numpy.array(total_walltimes)
+                total_times.append(solver.total_wall_time)
+        return numpy.array(total_times)
 
 
 @unittest.skipIf(
@@ -229,14 +230,14 @@ class TestStrongScaling(ScalingTest):
                             )
                         for ncpu in ncpus
                         )
-                    total_walltimes = self.run_cases(ncpus, grids)
+                    total_times = self.run_cases(ncpus, grids)
                     if MPI.COMM_WORLD.rank == 0:
                         # Check that the scaling is reasonable
                         fit = lambda x, A, n: A*x**-n
                         popt, pcov = scipy.optimize.curve_fit(
                             fit,
                             ncpus,
-                            total_walltimes/ncpus,
+                            total_times/ncpus,
                             )
                         self.assertGreaterEqual(
                             popt[1],
@@ -246,20 +247,20 @@ class TestStrongScaling(ScalingTest):
                 # the plot is still generated.
                 if MPI.COMM_WORLD.rank == 0:
                     # Plot the results
-                    self.plot_wall_time(
-                        axs[0], total_walltimes, ncpus, f"$N={N}^3$"
+                    self.plot_time(
+                        axs[0], total_times, ncpus, f"$N={N}^3$"
                         )
-                    self.plot_speedup(axs[1], total_walltimes, ncpus)
-                    self.plot_efficiency(axs[2], total_walltimes, ncpus)
+                    self.plot_speedup(axs[1], total_times, ncpus)
+                    self.plot_efficiency(axs[2], total_times, ncpus)
                     fig.suptitle(cpu_description)
                     fig.tight_layout()
-
                     print("============", "===============", "==============")
                     print("Problem size", "Number of tasks", "Total CPU Time")
                     print("============", "===============", "==============")
-                    for ncpu, time in zip(ncpus, total_walltimes):
+                    for ncpu, time in zip(ncpus, total_times):
                         print("{:12d}".format(N), "{:15g}".format(ncpu), "{:14g}".format(time))
-                    print("============", "===============", "==============")
+                    print("============", "===============",
+        "==============", flush=True)
 
 
 @unittest.skipIf(
@@ -318,12 +319,12 @@ class TestWeakScaling(ScalingTest):
                 )
             for n, ncpu in zip(sizes, ncpus)
             )
-        total_walltimes = self.run_cases(ncpus, grids)
+        total_times = self.run_cases(ncpus, grids)
         if MPI.COMM_WORLD.rank == 0:
             with self.subplots() as (fig, ax):
-                self.plot_wall_time(
+                self.plot_time(
                     ax,
-                    total_walltimes/numpy.log2(numpy.array(sizes)),
+                    total_times/numpy.log2(numpy.array(sizes)),
                     ncpus,
                     scaling='weak'
                     )
