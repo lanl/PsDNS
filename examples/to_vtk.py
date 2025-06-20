@@ -1,26 +1,31 @@
 """A script to convert dump files to VTK for visualization.
 """
-import numpy
+import numpy as np  # It's common practice to alias numpy as np.
 
 from psdns import *
 
-grid = SpectralGrid.read_checkpoint("data.grid")
+myfolder = "~/Desktop/LANL/PsDNS/caso_buoyant/data/"
+griddata = myfolder + "data.grid"
+print(griddata)
+grid = SpectralGrid.read_checkpoint(griddata)  
 
 def add_vorticity(uhat):
-    uhat[4:] = uhat[:3].curl()
+    uhat[4:] = uhat[:3].curl()  # Ensure that `curl` is a valid method for `uhat[:3]`.
 
 solver = Reader(
-    dt = 1,
-    tfinal = 100,
-    diagnostics = [
+    dt=1,
+    tfinal=5,
+    diagnostics=[
         VTKDump(
-            tdump=1, grid=grid,
-            filename="./phys{time:04g}",
-            names=['U', 'V', 'W', 'C', 'OmegaX', 'OmegaY', 'OmegaZ' ]
-            )
-        ],
-    equations = add_vorticity,
-    ic = SpectralArray(grid, (7,)),
-    filename = "data{:04g}",
-    )
+            tdump=0.5, 
+            grid=grid,
+            filename=myfolder + "phys{time:04g}",
+            names=['U', 'V', 'W', 'C', 'OmegaX', 'OmegaY', 'OmegaZ']
+        )
+    ],
+    equations=add_vorticity, 
+    ic=SpectralArray(grid, (7,)),  
+    filename=myfolder + "data{:04g}",  
+)
+
 solver.run()

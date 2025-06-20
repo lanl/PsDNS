@@ -11,12 +11,12 @@ from psdns.equations.navier_stokes import Boussinesq
 
 
 grid = SpectralGrid(
-    sdims=[21, 21, 683],
-    pdims=[32, 32, 1024],
+    sdims=[21, 21, 341],
+    pdims=[32, 32, 768],
     box_size=[4*numpy.pi, 4*numpy.pi, 128*numpy.pi]
     )
 grid.checkpoint("data.grid")
-equations = Boussinesq(Re=1)
+equations = Boussinesq(Re=10)
 
 x = grid.x[:2,:,:,0]
 solver = RungeKutta(
@@ -37,12 +37,12 @@ solver = RungeKutta(
             fields=['tke', 'dissipation', 'cavg', 'divU'],
             outfile="std.dat"
             ),
-        ProfilesConcentration(tdump=0.1, grid=grid, outfile='profiles.dat'),
+        ProfilesWithConcentration(tdump=0.1, grid=grid, outfile='./data/profiles.dat'),
         DissipationProfiles(tdump=0.1, grid=grid, outfile='dissipation.dat'),
         PressureProfiles(tdump=0.1, grid=grid, outfile='pressure.dat'),
-        RapidPressProfiles(tdump=0.1, grid=grid, outfile='press_r.dat'),
-        SlowPressProfiles(tdump=0.1, grid=grid, outfile='press_s.dat'),
-        BuoyantPressProfiles(tdump=0.1, grid=grid, outfile='press_b.dat'),
+        #RapidPressProfiles(tdump=0.1, grid=grid, outfile='press_r.dat'),
+        #SlowPressProfiles(tdump=0.1, grid=grid, outfile='press_s.dat'),
+        #BuoyantPressProfiles(tdump=0.1, grid=grid, outfile='press_b.dat'),
         ],
     )
 solver.run()

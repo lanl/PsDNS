@@ -46,23 +46,8 @@ class NavierStokes(object):
         self.Re = Re
         self.Sc = Sc
 
-    def _get_Re(self):
-        return 1.0/self.nu
-
-    def _set_Re(self, Re):
-        self.nu = 1.0/Re
-
-    Re = property(_get_Re, _set_Re)
-        
-    def _get_Sc(self):
-        return self.nu/self.D
-
-    def _set_Sc(self, Sc):
-        self.D = self.nu/Sc
-
-    Sc = property(_get_Sc, _set_Sc)
-
     def rhs(self, time, uhat):
+        
         r"""Compute the Navier-Stokes right-hand side
 
         Take the velocity and scalar fields in spectral space given by
@@ -103,18 +88,17 @@ class NavierStokes(object):
         u = uhat[:3].to_physical()
         nl = self.nonlinear(uhat, u)
         du = - numpy.einsum("ij...,j...->i...", uhat.grid.P, nl)
-        du -= self.nu*uhat.grid.k2*uhat[:3]
+        du -= uhat.grid.k2*uhat[:3]/self.Re
 
         gradc = uhat[3:].grad().to_physical()
         dc = - numpy.einsum("j...,ij...->i...", u, gradc)
         dc = PhysicalArray(uhat.grid, dc).to_spectral()
-        dc -= self.nu/self.Sc*uhat.grid.k2*uhat[3:]
+        dc -= uhat.grid.k2*uhat[3:]/self.Re/self.Sc
         
         return numpy.concatenate((du, dc))
 
     def nonlinear(self, uhat, u):
         """Compute the non-linear term for the Navier-Stokes operator
-
         Return the non-linear operator from the momentume equatiom,
         :math:`\widehat{u_k u_{j,k}}`, computed psuedo-spectrally, using
         the spectral space vector of unknowns *uhat* and the physical
@@ -429,12 +413,10 @@ class RotationalNavierStokes(NavierStokes):
     """
     def nonlinear(self, uhat, u):
         r"""Compute the rotational Navier-Stokes non-linear term
-
         Returns the non-linear term :math:`\boldsymbol{u} \times
         \boldsymbol{\omega}` with the vorticity computed from spectral
         velocity fields in the first three elements of *uhat* and the
-        velocity from the physical space velocity *u*.
-        """
+        velocity from the physical space velocity *u*."""
         vorticity = uhat[:3].curl().to_physical()
         nl = - numpy.cross(u, vorticity, axis=0)
         nl = PhysicalArray(uhat.grid, nl).to_spectral()
@@ -483,15 +465,25 @@ class Boussinesq(RotationalNavierStokes):
         = - \left( \delta_{ij} -\frac{k_i k_j}{k^2} \right) 
             \left( \widehat{\mathrm{NL}}_j - \hat{c} g_j \right) 
     """
-    def __init__(self, g=-1, **kwargs):
+    def __init__(self, g, At, L, **kwargs):
         """Return a Boussinesq equation object.
 
-        Intantiating returns a Boussinsesq equation object with
-        Reynolds number *Re* and Schmidt number *Sc*.
+        Initialization is made imposing (Re,Sc,At)
         """
         super().__init__(**kwargs)
 
+        #Initialize g
         self.g = g
+
+        #Initialize Atwood
+        self.At = At
+
+        #Inizialize nu
+        self.nu = numpy.sqrt( self.At * abs(self.g)* L**3)/self.Re
+        print(self.nu)
+
+        #Initialize Diffusivity
+        self.D = self.Sc * self.nu
 
     def nonlinear(self, uhat, u):
         r"""Compute the Boussinesq non-linear term.
@@ -547,6 +539,7 @@ class Boussinesq(RotationalNavierStokes):
         """
         u = PhysicalArray(grid, (4,))
         x = u.grid.x
+        
         x1 = u.grid.box_size[2]/2
         x2 = u.grid.box_size[2]
         u[3] = (
@@ -558,29 +551,127 @@ class Boussinesq(RotationalNavierStokes):
         s._data = numpy.ascontiguousarray(s._data)
         return s
 
-    def band(self, grid, kmin, kmax, seed=123):
-        if seed == None:
+    #def band(self, grid, kmin, kmax, seed=123):
+    #    if seed is None:
+    #        warnings.warn(
+    #            "A seed of None for Boussinesq.band() will result "
+    #            "in inconsistent initialization across MPI ranks."
+    #            )
+    #            
+    #    # Extract 2D grid slice for computation
+    #    x = grid.x[:2, :, :, 0]
+    #    z = numpy.zeros_like(x[0])
+    #    
+    #    # Initialize RNG with consistent seed
+    #    rng = numpy.random.default_rng(seed)
+    #    count = 0
+    #    
+    #    for n in range(-kmax, kmax + 1):
+    #        for m in range(-kmax, kmax + 1):
+    #            k = numpy.sqrt(n**2 + m**2)
+    #            if kmin <= k <= kmax:
+    #                count += 1
+    #                phase_n = rng.random()
+    #                phase_m = rng.random()
+    #                print(phase_n,phase_m,count)
+    #                z += (
+    #                    numpy.cos(2 * numpy.pi * (n * x[0] / grid.box_size[0] + phase_n)) *
+    #                    numpy.cos(2 * numpy.pi * (m * x[1] / grid.box_size[1] + phase_m))
+    #                    )
+    #    
+    #    return z / count if count > 0 else z
+    # 
+    
+    def spectrum(self,k):
+        return k**(0)
+    
+    def band(self, grid, kmin, kmax, E0, seed=123):
+        if seed is None:
             warnings.warn(
                 "A seed of None for Boussinesq.band() will result "
                 "in inconsistent initialization across MPI ranks."
                 )
-        # Check kmax fits on the grid!
-        x = grid.x[:2,:,:,0]
-        z = numpy.zeros(shape=x[0].shape)
-        # Since the loop will execute identically on all ranks, rng will
-        # generate the same random numbers.
+            
         rng = numpy.random.default_rng(seed)
-        for n in range(kmax):
-            for m in range(kmax):
-                k = numpy.sqrt(n**2 + m**2)
-                if k >= kmin and k <= kmax:
-                    z += (
-                        numpy.cos(2*numpy.pi*(n*x[0]/grid.box_size[0]+rng.random()))
-                        *numpy.cos(2*numpy.pi*(m*x[1]/grid.box_size[1]+rng.random()))
-                        )
+        # Extract 2D slice and initialize field
+        x_comp = grid.x[:2, :, :, 0]    # shape (2, Ny, Nx)
+        z = numpy.zeros_like(x_comp[0])
+        
+        # gather modes, radial k, and random phases
+        modes = []
+        radk  = []
+        phase_p = []
+        phase_q = []
+        for p in range(-kmax, kmax+1):
+            for q in range(-kmax, kmax+1):
+                k = numpy.hypot(p, q)
+                if kmin <= k <= kmax:
+                    modes.append((p, q))
+                    radk.append(k)
+                    phase_p.append(rng.random())
+                    phase_q.append(rng.random())
+    
+        modes   = numpy.array(modes)
+        radk    = numpy.array(radk)
+        phase_p = numpy.array(phase_p)
+        phase_q = numpy.array(phase_q)
+    
+        # define bins
+        Nb = 40
+        edges   = numpy.linspace(kmin, kmax, Nb+1)
+        centers = 0.5*(edges[:-1] + edges[1:])
+        dk      = edges[1] - edges[0]
+    
+        # assign each mode to a bin index in [0, Nb-1]
+        bin_idx = numpy.digitize(radk, edges) - 1
+        bin_idx = numpy.clip(bin_idx, 0, Nb-1)
+    
+        # count modes per bin
+        counts = numpy.bincount(bin_idx, minlength=Nb)
+    
+        # compute energy per bin from the prescribed spectrum
+        Ebin = self.spectrum(centers) * centers * dk
+        
+        # energy per mode, zero if its bin is empty
+        E_mode = numpy.where(
+            counts[bin_idx] > 0,
+            Ebin[bin_idx] / counts[bin_idx],
+            0.0
+        )
+    
+        # normalize total energy to E0
+        alpha = numpy.sqrt(E0 / numpy.sum(E_mode))
+        E_mode *= alpha**2
+    
+        # sample amplitudes A ~ N(0, E_mode)
+        A = rng.standard_normal(E_mode.shape) * numpy.sqrt(E_mode)
+    
+        # reconstruct the field
+        tmp = []
+        for idx, (p, q) in enumerate(modes):
+            kx = 2 * numpy.pi * p / grid.box_size[0]
+            ky = 2 * numpy.pi * q / grid.box_size[1]
+            tmp.append(numpy.sqrt(kx**2 + ky**2))
+            z += (
+                A[idx]
+                * numpy.cos(kx * x_comp[0] + phase_p[idx])
+                    * numpy.cos(ky * x_comp[1] + phase_q[idx])
+                )
+
+        if(grid.comm.rank == 0 ):
+            r1 = 2*numpy.pi/numpy.max(tmp)
+            r2 =numpy.max(A)
+            print(' the minimum wavelength in your domain is', r1)
+            print(' the maximum amplitude you have initialized is', r2)
+
+            if (r2/r1 > 0.1):
+                warning.warn('your initialization is out of linear regime')
+            else:
+                print('Initialization is within the linear regime')
+
         return z
 
-
+    
 class SimplifiedSmagorinsky(NavierStokes):
     r"""A simplified Smagorinsky-type model.
 
@@ -841,3 +932,19 @@ class KEpsilon(NavierStokes):
                 de[numpy.newaxis, ...],
             )
         )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -4,7 +4,7 @@ Psuedo-spectral data has two representations, one in physical space,
 and one in spectral space, forming a Fourier transform pair.  For MPI
 parallel computation, this data must be distributed across ranks.
 PsDNS provides simple support for Fourier data using three classes.
-The :class:`SpectralGrid` class contains all the information about the
+The :class:`SpectralGrid` contains all the information about the
 physical space grid, the spectral wavenumber grid, and the domain
 decomposition.  :class:`PhysicalArray` and :class:`SpectralArray` are
 MPI distributed array classes that are grid aware, and provide methods
@@ -137,6 +137,7 @@ class SpectralGrid(object):
         return grid
 
     def setup(self, cpu_dims):
+        #return a balanced distribution of processes per coordinate direction.
         self.decomp = MPI.Compute_dims(self.comm.size, cpu_dims)
         if self.decomp[0]*self.decomp[1] != self.comm.size:
             raise ValueError(
@@ -167,7 +168,7 @@ class SpectralGrid(object):
         kz_slices = self.decompose(self.sdims[2] // 2 + 1, self.decomp[1], even=True)
         
         #: The slice of the global spectral mesh stored by this process
-        #: loal on comm_zy
+        #: local on comm_zy
         self._local_ky_slice = ky_slices[yx_rank]
         self._local_kz_slice = kz_slices[zy_rank]
 
@@ -199,16 +200,28 @@ class SpectralGrid(object):
             fftfreq1[k[1]],
             rfftfreq[k[2]]
             ])
+        
         #: The local wavenumber magnitude squared.
-        self.k2 = numpy.sum(self.k*self.k, axis=0)
+        self.k2    = numpy.sum(self.k*self.k, axis=0)
+        #: The local plane wavenumber magnitude squared
+        self.k2_2D = numpy.sum(self.k[:2]*self.k[:2],axis=0 )
+
         #: The local wavenumber magnitude.
         self.kmag = numpy.sqrt(self.k2)
+        #: The local planar wavenumber magnitude.
+        self.kmag_2D = numpy.sqrt(self.k2_2D)
+
         #: The global maximum wavenumber magnitude.
         self.kmax = numpy.sqrt(
             numpy.amax(fftfreq0**2) + numpy.amax(fftfreq1**2)
             + numpy.amax(rfftfreq**2)
             )
+        #: the global planar maximum wavenumber magnitude
+        self.kmax_2D = numpy.sqrt(
+            numpy.amax(fftfreq0**2) + numpy.amax(fftfreq1**2))
+        
         self.dk = (fftfreq0[1]*fftfreq1[1]*rfftfreq[1])**(1/3)
+        self.dk_2D = (fftfreq0[1]*fftfreq1[1])**(1/2)
 
         s1 = self.sdims[1] // 2 + 1
         aliased_size = self.pdims[1] - self.sdims[1]
@@ -350,7 +363,7 @@ class SpectralGrid(object):
                 for i in range(ncpus)
                 ]
         else:
-            # Note, this may be too much work.  Just divide ncpus in two, and then handle the specuial
+            # Note, this may be too much work.  Just divide ncpus in two, and then handle the special
             # case of ncpus == nmodes if necessary.  This is already suboptimal for large odd ncpus.
             if ncpus == 1:
                 raise ValueError("Even decomposition is impossible across one processor")
@@ -365,8 +378,7 @@ class SpectralGrid(object):
                 slice(i*nmodes2//ncpus2 + nmodes1, (i+1)*nmodes2//ncpus2 + nmodes1)
                 for i in range(ncpus2)
                 ]
-                
-            
+                            
 class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     """Array of physical space data
 
@@ -428,6 +440,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         self.grid = grid
         #: The shape of the local data array
         self.shape = self._data.shape
+      
 
     def __array__(self, dtype=None):
         """Return a view of the data as an :class:`numpy.ndarray`."""
@@ -610,8 +623,7 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         bar = self.grid.comm.bcast(bar)
         prime = self - bar[..., numpy.newaxis, numpy.newaxis, :]
         return bar, prime
-
-
+    
 class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
     """Array of spectral space data
 
@@ -701,7 +713,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
         Return a MPI data type which represents the view of the local
         spectral data in a MPI data file.
         """
-        return MPI.DOUBLE_COMPLEX.Create_subarray(
+        view =  MPI.DOUBLE_COMPLEX.Create_subarray(
             [ self.grid.sdims[0],
               self.grid.sdims[1],
               self.grid.sdims[2]//2+1 ],
@@ -712,6 +724,9 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
               self.grid._local_ky_slice.start,
               self.grid._local_kz_slice.start ]
             ).Commit()
+        return view
+    
+    
 
     def checkpoint(self, filename):
         """Write a checkpoint file
@@ -798,6 +813,7 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
             if M[0] > N[0] and N[0] % 2 == 0:
                 s[..., N[0]//2, :, :] *= 0.5
                 s[..., -(N[0]//2), :, :] = s[..., N[0]//2, :, :]
+        #inverse fourier transform along kx         
         t1 = numpy.ascontiguousarray(numpy.fft.ifft(s, axis=-3))
         t2 = numpy.zeros(
             self.shape[:-3]
@@ -974,7 +990,6 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
 
     def disturbance(self):
         """Returns the disturbance.
-
         """
         prime = self.copy()
         # In spectral space, u' is uhat with the zero modes in x & y set to zero.
