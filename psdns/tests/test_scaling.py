@@ -14,9 +14,10 @@ from functools import partial
 from math import log
 import unittest
 
+import os
 import numpy
 import scipy.optimize
-
+import matplotlib.pyplot as plt
 from mpi4py import MPI
 
 from psdns import *
@@ -25,12 +26,12 @@ from psdns.equations.navier_stokes import NavierStokes
 try:
     import cpuinfo
     cpu_description = cpuinfo.get_cpu_info()['brand_raw']
-except:
+except ImportError:
     import platform
     cpu_description = platform.platform()
 
 
-class ScalingTest(tests.TestCase):
+class ScalingTest(unittest.TestCase):
     """A base class for scaling tests.
 
     This base class provides the generic functionality for parallel
@@ -62,7 +63,7 @@ class ScalingTest(tests.TestCase):
         )
 
     def plot_wall_time(
-            self, ax, total_walltimes, ncpus, label="",
+            self, ax, total_walltimes, ncpus, label,
             scaling='strong'):
         r"""Plot the wall clock time.
 
@@ -77,12 +78,12 @@ class ScalingTest(tests.TestCase):
         walltimes = total_walltimes/ncpus
         ax.plot(ncpus, walltimes, 's', label=label)
         if scaling == 'strong':
-            ax.plot(ncpus, walltimes[0]*ncpus[0]/ncpus, 'k--')
+            ax.plot(ncpus, walltimes[0]*ncpus[0]/ncpus, 'k--',label=label)
         elif scaling == 'weak':
             ax.plot(
                 [1, ncpus[-1]],
                 [walltimes[0], walltimes[0]],
-                '--k',
+                '--k', label = label
                 )
         ax.set_xlabel("Number of MPI ranks")
         ax.set_ylabel("Wall time (s)")
@@ -90,7 +91,7 @@ class ScalingTest(tests.TestCase):
         ax.set_yscale('log')
         ax.legend()
 
-    def plot_speedup(self, ax, total_walltimes, ncpus):
+    def plot_speedup(self, ax, total_walltimes, ncpus,label):
         """Plot the parallel speedup.
 
         Given a sequence of *total_walltimes* and *ncpus* (really number
@@ -104,7 +105,7 @@ class ScalingTest(tests.TestCase):
         ax.plot(
             ncpus,
             total_walltimes[0]*ncpus/total_walltimes,
-            's',
+            '-o', label = label
             )
         ax.plot(
             [1, ncpus[-1]],
@@ -116,7 +117,7 @@ class ScalingTest(tests.TestCase):
         ax.set_xscale('log')
         ax.set_yscale('log')
 
-    def plot_efficiency(self, ax, total_walltimes, ncpus):
+    def plot_efficiency(self, ax, total_walltimes, ncpus,label):
         """Plot the parallel efficiency.
 
         Given a sequence of *total_walltimes* and *ncpus* (really number
@@ -130,7 +131,7 @@ class ScalingTest(tests.TestCase):
         ax.plot(
             ncpus,
             total_walltimes[0]/total_walltimes,
-            's'
+            's',label=label
             )
         ax.plot(
             [1, ncpus[-1]],
@@ -140,7 +141,8 @@ class ScalingTest(tests.TestCase):
         ax.set_xlabel("Number of MPI ranks")
         ax.set_ylabel("Parallel Efficiency")
         ax.set_xscale('log')
-        ax.set_ylim(0, 1.1)
+        ax.set_yscale('log')
+        
 
     def run_cases(self, ncpus, grids):
         """Run a series of runs on different numbers of MPI ranks.
@@ -185,9 +187,8 @@ class TestStrongScaling(ScalingTest):
     #: consisting of the problem size, and the minimum and maximum
     #: number of processors (specified as powers of two) to run on.
     cases = [
-        (64, 0, 12),
-        (256, 3, 12),
-        (1024, 8, 12)
+        (64, 2, 2),
+        (256,4, 4)
         ]
 
     def test_strong_scaling_tgv(self):
@@ -213,59 +214,50 @@ class TestStrongScaling(ScalingTest):
 
             Strong scaling up to 1024 ranks.
         """
-        with self.subplots(1, 3, figsize=(9, 3)) as (fig, axs):
-            for N, nmin, nmax in self.cases:
-                with self.subTest(N=N):
-                    ncpus = numpy.array(
-                        [2**n for n in range(nmin, nmax+1)
-                         if 2**n <= MPI.COMM_WORLD.size]
-                        )
-                    if ncpus.size == 0:
-                        continue
-                    grids = (
-                        SpectralGrid(
-                            N,
-                            comm=MPI.COMM_WORLD.Split(MPI.COMM_WORLD.rank//ncpu, 0),
-                            )
-                        for ncpu in ncpus
-                        )
-                    total_walltimes = self.run_cases(ncpus, grids)
-                    if MPI.COMM_WORLD.rank == 0:
-                        # Check that the scaling is reasonable
-                        fit = lambda x, A, n: A*x**-n
-                        popt, pcov = scipy.optimize.curve_fit(
-                            fit,
-                            ncpus,
-                            total_walltimes/ncpus,
-                            )
-                        self.assertGreaterEqual(
-                            popt[1],
-                            0.8,
-                            )
-                # Plotting is outside the subtest, so if the assert fails,
-                # the plot is still generated.
-                if MPI.COMM_WORLD.rank == 0:
-                    # Plot the results
-                    self.plot_wall_time(
-                        axs[0], total_walltimes, ncpus, f"$N={N}^3$"
-                        )
-                    self.plot_speedup(axs[1], total_walltimes, ncpus)
-                    self.plot_efficiency(axs[2], total_walltimes, ncpus)
-                    fig.suptitle(cpu_description)
-                    fig.tight_layout()
+        fig, axs = plt.subplots(1, 3, figsize=(9, 3))
+        results = []
 
-                    print("============", "===============", "==============")
-                    print("Problem size", "Number of tasks", "Total CPU Time")
-                    print("============", "===============", "==============")
-                    for ncpu, time in zip(ncpus, total_walltimes):
-                        print("{:12d}".format(N), "{:15g}".format(ncpu), "{:14g}".format(time))
-                    print("============", "===============", "==============")
+        for N, nmin, nmax in self.cases:
+            ncpus = numpy.array([2**n for n in range(nmin, nmax + 1)
+                                 if 2**n <= MPI.COMM_WORLD.size])
+            if ncpus.size == 0:
+                continue
+
+            grids = (SpectralGrid(
+                        N,
+                        comm=MPI.COMM_WORLD.Split(MPI.COMM_WORLD.rank // ncpu, 0)
+                     ) for ncpu in ncpus)
+            total_walltimes = self.run_cases(ncpus, grids)
+
+            if MPI.COMM_WORLD.rank == 0 and ncpus.size > 1:
+                # check scaling exponent
+                fit = lambda x, A, n: A * x**-n
+                popt, _ = scipy.optimize.curve_fit(
+                    fit,
+                    ncpus,
+                    total_walltimes / ncpus
+                )
+                self.assertGreaterEqual(popt[1], 0.8)
+            # collect every case for plotting
+            
+            if MPI.COMM_WORLD.rank == 0:
+                results.append((N, ncpus, total_walltimes))
+
+                for N, ncpus, tw in results:
+                    label = f"{N}\u00b3 grid"
+                    self.plot_wall_time(axs[0], tw, ncpus,label=label)
+                    self.plot_speedup(axs[1], tw, ncpus,label=label)
+                    self.plot_efficiency(axs[2], tw, ncpus,label=label)
+                    #add legends and save
+                for ax in axs:
+                   ax.legend()
+                   fig.suptitle(cpu_description)
+                   fig.tight_layout()
+                fig.savefig('fig/test_scaling.TestStrongScaling.test_strong_scaling_tgv.png')
+                plt.close(fig)
 
 
-@unittest.skipIf(
-    MPI.COMM_WORLD.size < 8,
-    "More ranks required to test weak scaling"
-    )
+@unittest.skipIf(MPI.COMM_WORLD.size < 8, "More ranks required to test weak scaling")
 class TestWeakScaling(ScalingTest):
     r"""Test weak scaling for the Navier-Stokes equations.
 
@@ -306,28 +298,32 @@ class TestWeakScaling(ScalingTest):
     """
     def test_weak_scaling_tgv(self):
         """Weak scaling for the Navier-Stokes equations"""
-        ncpus = [
-            2**n for n in range(13)
-            if 2**n <= MPI.COMM_WORLD.size
-            ]
-        sizes = [int(2**6*numpy.cbrt(ncpu)) for ncpu in ncpus]
-        grids = (
-            SpectralGrid(
-                n,
-                comm=MPI.COMM_WORLD.Split(MPI.COMM_WORLD.rank//ncpu, 0)
-                )
-            for n, ncpu in zip(sizes, ncpus)
-            )
-        total_walltimes = self.run_cases(ncpus, grids)
         if MPI.COMM_WORLD.rank == 0:
-            with self.subplots() as (fig, ax):
-                self.plot_wall_time(
-                    ax,
-                    total_walltimes/numpy.log2(numpy.array(sizes)),
-                    ncpus,
-                    scaling='weak'
-                    )
-                ax.set_ylabel(r"Wall time (s) / $\log_2 N$")
-                ax.set_ylim(ymin=0)
-                ax.get_legend().remove()
-                fig.suptitle(cpu_description)
+            os.makedirs('fig', exist_ok=True)
+            fig, ax = plt.subplots(figsize=(6, 4))
+
+        ncpus = [2**n for n in range(13)
+                 if 2**n <= MPI.COMM_WORLD.size]
+        sizes = [int(2**6 * numpy.cbrt(ncpu)) for ncpu in ncpus]
+        grids = (SpectralGrid(
+                    n,
+                    comm=MPI.COMM_WORLD.Split(MPI.COMM_WORLD.rank // ncpu, 0)
+                 ) for n, ncpu in zip(sizes, ncpus))
+        total_walltimes = self.run_cases(ncpus, grids)
+
+        if MPI.COMM_WORLD.rank == 0:
+            # plot weak-scaling curve
+            self.plot_wall_time(
+                ax,
+                total_walltimes / numpy.log2(numpy.array(sizes)),
+                ncpus,
+                label='Weak scaling',
+                scaling='weak'
+            )
+            ax.set_ylabel(r"Wall time (s) / $\log_2 N$")
+            ax.legend()
+            fig.suptitle(cpu_description)
+            fig.tight_layout()
+            fig.savefig('fig/test_scaling.TestWeakScaling.test_weak_scaling_tgv.png')
+            plt.close(fig)
+

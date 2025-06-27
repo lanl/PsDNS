@@ -571,10 +571,17 @@ class Spectra(Diagnostic):
         spectrum = grid.comm.reduce(spectrum)
         ispectrum = grid.comm.reduce(ispectrum)
         if grid.comm.rank == 0:
-            spectrum *= 4*numpy.pi*k**2/(ispectrum/3) #why divide by 3 ?  
+            spectrum *= 4*numpy.pi*k**2/(ispectrum/3)
         return k, spectrum
     
     def diagnostic(self, time, equations, uhat):
+        """Write the spectrum to a file
+
+        The integral cannot be calculated as a simple Riemann sum,
+        because the binning is not smooth enough.  Instead, this routine
+        caclulates the shell average, and then multiplies by the shell
+        surface area.
+        """
         k, spectrum = self.integrate_shell(
             (uhat[:3]*uhat[:3].conjugate()).real/2,
             uhat.grid.dk,
@@ -665,7 +672,7 @@ class spectral_length_2D(Diagnostic):
     nt = 0 
     def correlation_width_2D(self,phi,dk,grid):
         
-        #number of bin
+        #number of bin in the 2D plane
         nbins = int(grid.kmax_2D/dk)+1
 
         #only half-modes retained since its hermitian

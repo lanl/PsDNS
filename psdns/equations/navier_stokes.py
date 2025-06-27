@@ -473,17 +473,18 @@ class Boussinesq(RotationalNavierStokes):
         super().__init__(**kwargs)
 
         #Initialize g
-        self.g = g
+        #self.g = g
+        #We use the adimensionalized equation
 
         #Initialize Atwood
         self.At = At
 
         #Inizialize nu
-        self.nu = numpy.sqrt( self.At * abs(self.g)* L**3)/self.Re
-        print(self.nu)
+        #self.nu = numpy.sqrt( self.At * abs(self.g)* L**3)/self.Re
+        #print(self.nu)
 
         #Initialize Diffusivity
-        self.D = self.Sc * self.nu
+        #self.D = self.Sc * self.nu
 
     def nonlinear(self, uhat, u):
         r"""Compute the Boussinesq non-linear term.
@@ -502,7 +503,7 @@ class Boussinesq(RotationalNavierStokes):
             \left( \widehat{u_{k}u_{j,k}} - \hat{c} g_{j} \right)
         """
         nl = super().nonlinear(uhat, u)
-        nl[2] -= self.g*uhat[3]
+        nl[2] -= 2*self.At*uhat[3]
         return nl
 
     def pressure(self, uhat):
