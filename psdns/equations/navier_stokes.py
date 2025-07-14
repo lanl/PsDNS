@@ -586,31 +586,43 @@ class Boussinesq(RotationalNavierStokes):
     def spectrum(self,k):
         return k**(0)
     
-    def band(self, grid, kmin, kmax, E0, seed=123):
+    def band(self, grid, Nmin, Nmax, E0, seed=123):
         if seed is None:
             warnings.warn(
                 "A seed of None for Boussinesq.band() will result "
                 "in inconsistent initialization across MPI ranks."
                 )
-            
+        
+        E0_local = E0/grid.comm.size
         rng = numpy.random.default_rng(seed)
         # Extract 2D slice and initialize field
         x_comp = grid.x[:2, :, :, 0]    # shape (2, Ny, Nx)
         z = numpy.zeros_like(x_comp[0])
+
+
+        #the shell is circular so choose min(Lx,Ly)
+        L = numpy.min([grid.box_size[0],grid.box_size[1]])
+        
+
+        kmax = 2*Nmax*numpy.pi/L
+        kmin = 2*Nmin*numpy.pi/L
         
         # gather modes, radial k, and random phases
         modes = []
         radk  = []
         phase_p = []
         phase_q = []
-        for p in range(-kmax, kmax+1):
-            for q in range(-kmax, kmax+1):
-                k = numpy.hypot(p, q)
+
+        for p in range(-Nmax, Nmax+1):
+            for q in range(-Nmax, Nmax+1):
+                kx = 2*p*numpy.pi/L
+                ky = 2*q*numpy.pi/L
+                k = numpy.hypot(kx, ky)
                 if kmin <= k <= kmax:
-                    modes.append((p, q))
+                    modes.append((kx, ky))
                     radk.append(k)
-                    phase_p.append(rng.random())
-                    phase_q.append(rng.random())
+                    phase_p.append(rng.random()*2*numpy.pi)
+                    phase_q.append(rng.random()*2*numpy.pi)
     
         modes   = numpy.array(modes)
         radk    = numpy.array(radk)
@@ -631,7 +643,7 @@ class Boussinesq(RotationalNavierStokes):
         counts = numpy.bincount(bin_idx, minlength=Nb)
     
         # compute energy per bin from the prescribed spectrum
-        Ebin = self.spectrum(centers) * centers * dk
+        Ebin = self.spectrum(centers) * dk
         
         # energy per mode, zero if its bin is empty
         E_mode = numpy.where(
@@ -641,7 +653,7 @@ class Boussinesq(RotationalNavierStokes):
         )
     
         # normalize total energy to E0
-        alpha = numpy.sqrt(E0 / numpy.sum(E_mode))
+        alpha = numpy.sqrt(4.0*E0_local / numpy.sum(E_mode))
         E_mode *= alpha**2
     
         # sample amplitudes A ~ N(0, E_mode)
@@ -649,27 +661,15 @@ class Boussinesq(RotationalNavierStokes):
     
         # reconstruct the field
         tmp = []
-        for idx, (p, q) in enumerate(modes):
-            kx = 2 * numpy.pi * p / grid.box_size[0]
-            ky = 2 * numpy.pi * q / grid.box_size[1]
-            tmp.append(numpy.sqrt(kx**2 + ky**2))
-            z += (
-                A[idx]
-                * numpy.cos(kx * x_comp[0] + phase_p[idx])
-                    * numpy.cos(ky * x_comp[1] + phase_q[idx])
-                )
+        for idx, (kx, ky) in enumerate(modes):
 
-        if(grid.comm.rank == 0 ):
-            r1 = 2*numpy.pi/numpy.max(tmp)
-            r2 =numpy.max(A)
-            print(' the minimum wavelength in your domain is', r1)
-            print(' the maximum amplitude you have initialized is', r2)
-
-            if (r2/r1 > 0.1):
-                warning.warn('your initialization is out of linear regime')
-            else:
-                print('Initialization is within the linear regime')
-
+            z = z + (A[idx] * 
+                     numpy.cos(kx * x_comp[0] + phase_p[idx]) * 
+                     numpy.cos(ky * x_comp[1] + phase_q[idx])
+                     )
+                
+        var_z = numpy.mean(z**2)
+        print("desired E0:", E0_local, "actual var(z):", var_z)
         return z
 
     

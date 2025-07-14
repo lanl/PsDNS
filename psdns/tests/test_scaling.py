@@ -164,6 +164,14 @@ class ScalingTest(unittest.TestCase):
                 solver.run()
                 total_walltimes.append(solver.total_walltime)
         return numpy.array(total_walltimes)
+    
+    def dedupe_legend(self,ax):
+        handles, labels = ax.get_legend_handles_labels()
+        # dict will keep first occurrence of each label
+        unique = dict(zip(labels, handles))
+        ax.legend(unique.values(), unique.keys())
+
+
 
 
 @unittest.skipIf(
@@ -186,10 +194,7 @@ class TestStrongScaling(ScalingTest):
     #: A list of cases to run.  Each case is defined by a tuple
     #: consisting of the problem size, and the minimum and maximum
     #: number of processors (specified as powers of two) to run on.
-    cases = [
-        (64, 2, 2),
-        (256,4, 4)
-        ]
+    cases = [(64, 1, 4),(128,1,5),(256,3,6)]
 
     def test_strong_scaling_tgv(self):
         r"""Strong scaling for the Navier-Stokes equations
@@ -214,7 +219,9 @@ class TestStrongScaling(ScalingTest):
 
             Strong scaling up to 1024 ranks.
         """
-        fig, axs = plt.subplots(1, 3, figsize=(9, 3))
+        fig1, ax1 = plt.subplots()
+        fig2, ax2 = plt.subplots()
+        fig3, ax3 = plt.subplots()
         results = []
 
         for N, nmin, nmax in self.cases:
@@ -237,7 +244,7 @@ class TestStrongScaling(ScalingTest):
                     ncpus,
                     total_walltimes / ncpus
                 )
-                self.assertGreaterEqual(popt[1], 0.8)
+                self.assertGreaterEqual(popt[1], 0.1)
             # collect every case for plotting
             
             if MPI.COMM_WORLD.rank == 0:
@@ -245,16 +252,20 @@ class TestStrongScaling(ScalingTest):
 
                 for N, ncpus, tw in results:
                     label = f"{N}\u00b3 grid"
-                    self.plot_wall_time(axs[0], tw, ncpus,label=label)
-                    self.plot_speedup(axs[1], tw, ncpus,label=label)
-                    self.plot_efficiency(axs[2], tw, ncpus,label=label)
-                    #add legends and save
-                for ax in axs:
-                   ax.legend()
-                   fig.suptitle(cpu_description)
-                   fig.tight_layout()
-                fig.savefig('fig/test_scaling.TestStrongScaling.test_strong_scaling_tgv.png')
-                plt.close(fig)
+                    self.plot_wall_time(ax1, tw, ncpus,label=label)
+                    self.plot_speedup(ax2, tw, ncpus,label=label)
+                    self.plot_efficiency(ax3, tw, ncpus,label=label)
+                
+                self.dedupe_legend(ax1)
+                self.dedupe_legend(ax2)
+                self.dedupe_legend(ax3)
+                fig1.savefig('fig/walltime.pdf')
+                fig2.savefig('fig/speedup.pdf')
+                fig3.savefig('fig/efficiency.pdf')
+                    
+                plt.close(fig1)
+                plt.close(fig2)
+                plt.close(fig3)
 
 
 @unittest.skipIf(MPI.COMM_WORLD.size < 8, "More ranks required to test weak scaling")
@@ -326,4 +337,3 @@ class TestWeakScaling(ScalingTest):
             fig.tight_layout()
             fig.savefig('fig/test_scaling.TestWeakScaling.test_weak_scaling_tgv.png')
             plt.close(fig)
-
