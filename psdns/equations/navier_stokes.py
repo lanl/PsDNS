@@ -18,7 +18,7 @@ class NavierStokes(Equation):
         u_{i,t} + u_j u_{i,j} & = - p_{,i} + \nu u_{i,jj} \\
         c_{,t} + u_{j}c_{,j} & = D c_{,jj}
     """
-    def __init__(self, Re, Sc=1, **kwargs):
+    def __init__(self, Re, Sc, **kwargs):
         r"""Return a Navier-Stokes equation object.
 
         Instantiating returns a Navier-Stokes equation object with
@@ -581,20 +581,19 @@ class Boussinesq(RotationalNavierStokes):
     #                    )
     #    return z
 
-    def spectrum(self,k):
-        return k**(-2)
+    def spectrum(self, k, k0):
+        return (k/k0) * numpy.exp(-2.0*(k/k0)**2)
 
-    def band(self, grid, Nmin, Nmax, E0, seed=123):
+    def band(self, grid, Nmin, Nmax, E0, seed, k0=2.0):
         if seed is None:
             warnings.warn(
                 "A seed of None for Boussinesq.band() will result "
                 "in inconsistent initialization across MPI ranks."
                 )
         
-        E0_local = E0/grid.comm.size
         rng = numpy.random.default_rng(seed)
         # Extract 2D slice and initialize field
-        x_comp = grid.x[:2, :, :, 0]    # shape (2, Ny, Nx)
+        x_comp = grid.x[:2, :, :, 0]    # shape (2, Nx_local, Ny_local)
         z = numpy.zeros_like(x_comp[0])
 
 
@@ -641,7 +640,7 @@ class Boussinesq(RotationalNavierStokes):
         counts = numpy.bincount(bin_idx, minlength=Nb)
     
         # compute energy per bin from the prescribed spectrum
-        Ebin = self.spectrum(centers) * dk
+        Ebin = self.spectrum(centers, k0) * dk
         
         # energy per mode, zero if its bin is empty
         E_mode = numpy.where(
@@ -651,23 +650,23 @@ class Boussinesq(RotationalNavierStokes):
         )
     
         # normalize total energy to E0
-        alpha = numpy.sqrt(4.0*E0_local / numpy.sum(E_mode))
+        alpha = numpy.sqrt(4.0*E0 / numpy.sum(E_mode))
         E_mode *= alpha**2
-    
+
         # sample amplitudes A ~ N(0, E_mode)
         A = rng.standard_normal(E_mode.shape) * numpy.sqrt(E_mode)
-    
-        # reconstruct the field
-        tmp = []
-        for idx, (kx, ky) in enumerate(modes):
 
-            z = z + (A[idx] * 
-                     numpy.cos(kx * x_comp[0] + phase_p[idx]) * 
+        # reconstruct the field
+        for idx, (kx, ky) in enumerate(modes):
+            z = z + (A[idx] *
+                     numpy.cos(kx * x_comp[0] + phase_p[idx]) *
                      numpy.cos(ky * x_comp[1] + phase_q[idx])
                      )
-                
-        var_z = numpy.mean(z**2)
-        print("desired E0:", E0_local, "actual var(z):", var_z)
+
+        var_z = grid.comm.allreduce(float(numpy.sum(z**2))) \
+              / (grid.pdims[0] * grid.pdims[1])
+        if grid.comm.rank == 0:
+            print(f"band: desired E0={E0:.3e}, actual var(z)={var_z:.3e}")
         return z
 
 
