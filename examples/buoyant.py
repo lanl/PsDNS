@@ -16,7 +16,7 @@ grid = SpectralGrid(
     box_size=[4*numpy.pi, 4*numpy.pi, 128*numpy.pi]
     )
 grid.checkpoint("data.grid")
-equations = Boussinesq(Re=1)
+equations = Boussinesq(At=0.5, Re=1, Sc=1)
 
 x = grid.x[:2,:,:,0]
 solver = RungeKutta(
@@ -25,7 +25,7 @@ solver = RungeKutta(
     equations=equations,
     ic=equations.perturbed_interface(
         grid,
-        1.0e-3*equations.band(grid, 1, 4)
+        1.0e-3*equations.band(grid, 1, 4, E0=1.0, seed=123)
         + 1.0e-1*numpy.cos(x[0]/2) * numpy.cos(x[1]/2),
         0.1,
         0.1,

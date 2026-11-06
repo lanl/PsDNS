@@ -325,6 +325,29 @@ class SpectralGrid(object):
             for p in x_slices
             ]
 
+    @staticmethod
+    def _alltoallw_fields(comm, send, receive, sendtypes, receivetypes):
+        """Exchange every scalar field in a tensor-valued FFT buffer.
+
+        Repeating a derived subarray datatype by setting an
+        ``Alltoallw`` count larger than one is unreliable for sufficiently
+        large buffers with some MPI implementations.  In that case the last
+        vector/tensor component can be corrupted even though scalar FFTs are
+        correct.  Treat the leading dimensions as independent scalar fields
+        and exchange each one with a count of one.
+        """
+        nfields = int(numpy.prod(send.shape[:-3], dtype=int))
+        send_fields = send.reshape((nfields,) + send.shape[-3:])
+        receive_fields = receive.reshape((nfields,) + receive.shape[-3:])
+        counts = [1] * comm.size
+        displacements = [0] * comm.size
+
+        for send_field, receive_field in zip(send_fields, receive_fields):
+            comm.Alltoallw(
+                [send_field, counts, displacements, sendtypes],
+                [receive_field, counts, displacements, receivetypes],
+                )
+
     def __del__(self):
         self.comm_zy.Free()
         self.comm_yx.Free()
@@ -538,24 +561,14 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                - self.grid._local_kz_slice.start),
             dtype=complex
             )
-        # Note:
-        # 1. The length of count and disp correspond to the number of slabs we
-        #    are transferring between (which is the MPI rank).
-        # 2. The value of count is the size of the tensor (which is the same
-        #    for all slabs.
-        # 3. The value of disp is the offset of the portion of the array we are
-        #    transferring.  Since the MPI datatype is a subarray, the offset is
-        #    always zero, with the datatype itself containing the true offset.
-        # 4. The offset between each of the count items to be transferred,
-        #    which is *count*, is also already embedded in the subarray MPI
-        #    datatype.
-        count = numpy.prod(self.shape[:-3], dtype=int)
-        counts = [count] * self.grid.comm_zy.size
-        disp = [0] * self.grid.comm_zy.size
-
-        self.grid.comm_zy.Alltoallw(
-            [t1, counts, disp, self.grid._kz_pencils],
-            [t2, counts, disp, self.grid._y_pencils]
+        # The derived datatypes describe one scalar field.  Tensor-valued
+        # buffers are exchanged component by component by the helper below.
+        self.grid._alltoallw_fields(
+            self.grid.comm_zy,
+            t1,
+            t2,
+            self.grid._kz_pencils,
+            self.grid._y_pencils,
             )
         t3 = numpy.fft.fft(
                  t2,
@@ -579,13 +592,12 @@ class PhysicalArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                - self.grid._local_kz_slice.start),
             dtype=complex
             )
-        count = numpy.prod(self.shape[:-3], dtype=int)
-        counts = [count] * self.grid.comm_yx.size
-        disp = [0] * self.grid.comm_yx.size
-
-        self.grid.comm_yx.Alltoallw(
-            [t3, counts, disp, self.grid._ky_pencils],
-            [t4, counts, disp, self.grid._x_pencils]
+        self.grid._alltoallw_fields(
+            self.grid.comm_yx,
+            t3,
+            t4,
+            self.grid._ky_pencils,
+            self.grid._x_pencils,
             )
 
         t5 = numpy.fft.fft(
@@ -833,12 +845,12 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                - self.grid._local_kz_slice.start),
             dtype=complex
             )
-        count = numpy.prod(self.shape[:-3], dtype=int)
-        counts = [count] * self.grid.comm_yx.size
-        displs = [0] * self.grid.comm_yx.size
-        self.grid.comm_yx.Alltoallw(
-            [t1, counts, displs, self.grid._x_pencils],
-            [t2, counts, displs, self.grid._ky_pencils],
+        self.grid._alltoallw_fields(
+            self.grid.comm_yx,
+            t1,
+            t2,
+            self.grid._x_pencils,
+            self.grid._ky_pencils,
             )
         if self.grid._aliasing_strategy == 'mpi4py':
             if M[1] > N[1] and N[1] % 2 == 0:
@@ -858,12 +870,12 @@ class SpectralArray(numpy.lib.mixins.NDArrayOperatorsMixin):
                self.grid.pdims[2] // 2 + 1),
             dtype=complex
             )
-        count = numpy.prod(self.shape[:-3], dtype=int)
-        counts = [count] * self.grid.comm_zy.size
-        displs = [0] * self.grid.comm_zy.size
-        self.grid.comm_zy.Alltoallw(
-            [t3, counts, displs, self.grid._y_pencils],
-            [t4, counts, displs, self.grid._kz_pencils],
+        self.grid._alltoallw_fields(
+            self.grid.comm_zy,
+            t3,
+            t4,
+            self.grid._y_pencils,
+            self.grid._kz_pencils,
             )
         t5 = numpy.fft.irfft(
             t4,

@@ -492,27 +492,100 @@ class DissipationProfilesWithConcentration(DissipationProfiles):
 
     
 class PressureProfiles(Diagnostic):
+    r"""Write pressure correlations and pressure-strain profiles.
+
+    For the pressure field selected by :attr:`press_routine`, this
+    diagnostic writes the pressure variance, pressure-transport flux,
+    and the unsymmetrized pressure-gradient correlation
+
+    .. math::
+
+       Q_{ij} = \left\langle p'\frac{\partial u_i'}{\partial x_j}\right\rangle_{xy}.
+
+    The six independent components of the symmetric pressure-strain
+    tensor are also written explicitly,
+
+    .. math::
+
+       \Pi_{ij} = Q_{ij} + Q_{ji}.
+
+    All quantities are instantaneous planar averages and functions of
+    the remaining z coordinate.
+    """
     press_routine = "pressure"
 
+    num_fields = 3
     num_components = 9
 
-    header = "t = {}\nz p prms pu pv pw pc pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz"
+    header = (
+        "t = {}\n"
+        "z pmean p2 pu pv pw "
+        "pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz "
+        "Pixx Piyy Pizz Pixy Pixz Piyz"
+        )
+
+    pressure_strain_indicies = [
+        (0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2),
+        ]
+
+    def correlations(self, equations, uhat):
+        r"""Compute the pressure correlations written by this diagnostic.
+
+        The collective reductions are performed on every MPI rank.  A
+        dictionary of profiles is returned on rank zero and ``None`` is
+        returned on all other ranks.
+        """
+        _, fluctuations = uhat[:self.num_fields].to_physical().disturbance()
+        pbar, p = getattr(
+            equations, self.press_routine
+            )(uhat).to_physical().disturbance()
+
+        pressure_flux = (p*fluctuations).avg_xy()
+        pressure_variance = (p*p).avg_xy()
+
+        # Remove planar mean modes before differentiating.  Multiplication
+        # by p' would make the mean-gradient contribution vanish in an exact
+        # planar average, but using the explicit disturbance makes the
+        # definition and its finite-precision implementation unambiguous.
+        grad_fluctuations = uhat[:self.num_fields].disturbance().grad().to_physical()
+        pressure_gradient = (p*grad_fluctuations).avg_xy()
+
+        if uhat.grid.comm.rank != 0:
+            return None
+
+        velocity_pressure_gradient = pressure_gradient[:3]
+        pressure_strain_tensor = (
+            velocity_pressure_gradient
+            + velocity_pressure_gradient.transpose(1, 0, 2)
+            )
+        pressure_strain = numpy.asarray([
+            pressure_strain_tensor[i, j]
+            for i, j in self.pressure_strain_indicies
+            ])
+
+        return {
+            'pressure_mean': pbar,
+            'pressure_variance': pressure_variance,
+            'pressure_flux': pressure_flux,
+            'pressure_gradient': pressure_gradient,
+            'pressure_strain': pressure_strain,
+            }
 
     def diagnostic(self, time, equations, uhat):
-        ubar, u = uhat.to_physical().disturbance()
-        pbar, p = getattr(equations, self.press_routine)(uhat).to_physical().disturbance()
-        # Pressure diffusion flux
-        pu = (p*u).avg_xy()
-        pnorm = (p*p).avg_xy()
-        # Pressure strain
-        gradu = uhat.grad().to_physical()
-        press_strain = (p*gradu).avg_xy()
+        correlations = self.correlations(equations, uhat)
         if uhat.grid.comm.rank == 0:
             numpy.savetxt(
                 self.outfile,
                 numpy.vstack([
-                    uhat.grid.x[2,0,0,:], pbar, pnorm, pu,
-                    press_strain.reshape((self.num_components, -1)) ]).T,
+                    uhat.grid.x[2,0,0,:],
+                    correlations['pressure_mean'],
+                    correlations['pressure_variance'],
+                    correlations['pressure_flux'],
+                    correlations['pressure_gradient'].reshape(
+                        (self.num_components, -1)
+                        ),
+                    correlations['pressure_strain'],
+                    ]).T,
                 header=self.header.format(time)
                 )
             self.outfile.write("\n\n")
@@ -531,9 +604,15 @@ class BuoyantPressProfiles(PressureProfiles):
 
 
 class PressureProfilesWithConcentration(PressureProfiles):
+    num_fields = 4
     num_components = 12
 
-    header = "t = {}\nz p prms pu pv pw pc pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz pdcdx pdcdy pdcdz"
+    header = (
+        "t = {}\n"
+        "z pmean p2 pu pv pw pc "
+        "pdudx pdudy pdudz pdvdx pdvdy pdvdz pdwdx pdwdy pdwdz "
+        "pdcdx pdcdy pdcdz Pixx Piyy Pizz Pixy Pixz Piyz"
+        )
 
 
 class RapidPressProfilesWithConcentration(PressureProfilesWithConcentration):

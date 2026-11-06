@@ -18,7 +18,7 @@ class NavierStokes(Equation):
         u_{i,t} + u_j u_{i,j} & = - p_{,i} + \nu u_{i,jj} \\
         c_{,t} + u_{j}c_{,j} & = D c_{,jj}
     """
-    def __init__(self, Re, Sc, **kwargs):
+    def __init__(self, Re, Sc=1, **kwargs):
         r"""Return a Navier-Stokes equation object.
 
         Instantiating returns a Navier-Stokes equation object with
@@ -515,15 +515,18 @@ class Boussinesq(RotationalNavierStokes):
         return nl
 
     def pressure(self, uhat):
+        """Return pressure including the Boussinesq buoyancy contribution."""
         u = uhat[:3].to_physical()
         nl = NavierStokes.nonlinear(self, uhat, u)
-        nl[2] -= self.g*uhat[3]
+        nl[2] -= self.g*uhat[3]*2.0*self.At
         p = nl.div() \
           / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
         return SpectralArray(uhat.grid, p)
 
     def press_buoyant(self, uhat):
-        p = - 1j * uhat.grid.k[2] * uhat[3].disturbance() * self.g \
+        """Return the fluctuating buoyancy-pressure contribution."""
+        p = - 1j * uhat.grid.k[2] * uhat[3].disturbance() \
+          * self.g * 2.0*self.At \
           / numpy.where(uhat.grid.k2 == 0, 1, uhat.grid.k2)
         return SpectralArray(uhat.grid, p)
     

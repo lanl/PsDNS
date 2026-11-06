@@ -437,6 +437,44 @@ class TestProperties(tests.TestCase):
                             numpy.asarray(p[i])
                             )
 
+    def test_large_vector_transforms_are_elementwise(self):
+        """Large batched FFTs agree with scalar FFTs on multiple ranks.
+
+        This grid makes the pencil buffers large enough to exercise an MPI
+        ``Alltoallw`` failure seen when a derived datatype was repeated for
+        all vector components in one call.
+        """
+        grid = SpectralGrid(
+            sdims=(31, 31, 63),
+            pdims=(48, 48, 96),
+            )
+        spectral = SpectralArray(grid, (4,))
+
+        for i in range(4):
+            physical = PhysicalArray(grid)
+            physical[...] = (
+                numpy.sin((i+1)*grid.x[0])
+                + 0.2*numpy.cos((i+2)*grid.x[1] + grid.x[2])
+                )
+            spectral[i] = physical.to_spectral()
+
+        physical = spectral.to_physical()
+        transformed = physical.to_spectral()
+        for i in range(4):
+            with self.subTest(vector_element=i):
+                nptest.assert_allclose(
+                    numpy.asarray(physical[i]),
+                    numpy.asarray(spectral[i].to_physical()),
+                    rtol=0.0,
+                    atol=1e-13,
+                    )
+                nptest.assert_allclose(
+                    numpy.asarray(transformed[i]),
+                    numpy.asarray(physical[i].to_spectral()),
+                    rtol=0.0,
+                    atol=1e-13,
+                    )
+
 
 @unittest.skipIf(
     MPI.COMM_WORLD.size != 1,
