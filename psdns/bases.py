@@ -25,6 +25,7 @@ referred to as *global*, whereas information about a specific rank is
 *local*.
 """
 from functools import cached_property
+from math import prod
 import warnings
 import numpy as np
 import cupy as numpy
@@ -392,7 +393,7 @@ class PhysicalArray(np.lib.mixins.NDArrayOperatorsMixin):
         # 4. The offset between each of the count items to be transferred,
         #    which is *count*, is also already embedded in the subarray MPI
         #    datatype.
-        count = numpy.prod(numpy.asarray(self.shape[:-3]), dtype=int)
+        count = prod(self.shape[:-3])
         counts = [count] * self.grid.comm.size
         disp = [0] * self.grid.comm.size
         self.grid.comm.Alltoallw(
@@ -613,7 +614,7 @@ class SpectralArray(np.lib.mixins.NDArrayOperatorsMixin):
                int(self.grid.sdims[2]//2+1)),
             dtype=complex
             )
-        count = numpy.prod(numpy.asarray(self.shape[:-3]), dtype=int)
+        count = prod(self.shape[:-3])
         counts = [count] * self.grid.comm.size
         displs = [0] * self.grid.comm.size
         self.grid.comm.Alltoallw(

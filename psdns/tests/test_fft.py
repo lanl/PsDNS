@@ -301,6 +301,20 @@ class TestSymmetries(tests.TestCase):
 class TestProperties(tests.TestCase):
     """Test that various mathematical properties of the FFT obeyed.
     """
+    def test_tensor_round_trip(self):
+        """Scalar, vector, and tensor fields survive an FFT round trip."""
+        for sdims in ((9, 9, 9), (8, 8, 8)):
+            grid = SpectralGrid(sdims)
+            for shape in ((), (3,), (2, 3)):
+                with self.subTest(sdims=sdims, shape=shape):
+                    p = random_physical_array(grid, shape)
+                    restored = p.to_spectral().to_physical()
+                    self.assertEqual(restored.shape, p.shape)
+                    numpy.testing.assert_allclose(
+                        restored._data, p._data,
+                        rtol=1e-12, atol=1e-12
+                        )
+
     def test_round_trip1(self):
         """Transforming to spectral and back to physical returns the original value.
         """
