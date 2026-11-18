@@ -2,15 +2,108 @@
 """
 import contextlib
 import filecmp
+import operator
 import os
 import tempfile
 import unittest
 
 from mpi4py import MPI
-import numpy
+import cupy
+import numpy as np
 from numpy import testing as nptest
 
 from psdns import *
+from psdns.equations.basic import Wave
+
+
+class TestArrayConversion(unittest.TestCase):
+    """Access local array data while preserving field arithmetic."""
+
+    def setUp(self):
+        self.grid = SpectralGrid(8)
+        for datatype in self.grid.slice1 + self.grid.slice2:
+            self.addCleanup(datatype.Free)
+
+    def test_array_view(self):
+        for array_type in (PhysicalArray, SpectralArray):
+            for transpose in (False, True):
+                with self.subTest(array_type=array_type.__name__,
+                                  transpose=transpose):
+                    field = array_type(self.grid, (2, 3))
+                    values = cupy.arange(np.prod(field.shape), dtype=float)
+                    values = values.reshape(field.shape)
+                    if array_type is SpectralArray:
+                        values = values * (1 + 2j)
+                    field[...] = values
+                    if transpose:
+                        field = field.transpose(1, 0, 2, 3, 4)
+                        values = values.transpose(1, 0, 2, 3, 4)
+                    view = field.asarray()
+                    self.assertEqual(view.shape, values.shape)
+                    self.assertEqual(view.dtype, values.dtype)
+                    self.assertEqual(view.strides, values.strides)
+                    cupy.testing.assert_array_equal(view, values)
+                    view[...] = 3
+                    cupy.testing.assert_array_equal(field.asarray(), 3)
+                    field[...] = 4
+                    cupy.testing.assert_array_equal(view, 4)
+                    view.shape = view.shape[:2] + (-1,)
+                    self.assertEqual(field.asarray().shape, field.shape)
+
+    def test_numpy_copy(self):
+        for array_type in (PhysicalArray, SpectralArray):
+            with self.subTest(array_type=array_type.__name__):
+                field = array_type(self.grid)
+                field[...] = 2
+                host = cupy.asnumpy(field.asarray())
+                self.assertIsInstance(host, np.ndarray)
+                self.assertEqual(host.shape, field.shape)
+                self.assertEqual(host.dtype, field.asarray().dtype)
+                field[...] = 3
+                nptest.assert_array_equal(host, 2)
+
+    def test_implicit_conversion(self):
+        for array_type in (PhysicalArray, SpectralArray):
+            with self.subTest(array_type=array_type.__name__):
+                field = array_type(self.grid)
+                for asarray in (np.asarray, cupy.asarray):
+                    with self.subTest(asarray=asarray):
+                        with self.assertRaises(TypeError):
+                            asarray(field)
+                for copy in (False, True):
+                    with self.subTest(copy=copy):
+                        with self.assertRaises(TypeError):
+                            np.array(field, dtype=np.complex64, copy=copy)
+
+    def test_mixed_arithmetic(self):
+        for array_type in (PhysicalArray, SpectralArray):
+            field = array_type(self.grid)
+            field[...] = 2
+            device = cupy.full(field.shape, 3)
+            for operation in (operator.add, operator.sub, operator.mul):
+                for left, right, expected in (
+                        (field, device, operation(2, 3)),
+                        (device, field, operation(3, 2))):
+                    with self.subTest(array_type=array_type.__name__,
+                                      operation=operation.__name__,
+                                      field_first=left is field):
+                        result = operation(left, right)
+                        self.assertIsInstance(result, array_type)
+                        self.assertIs(result.grid, self.grid)
+                        self.assertEqual(result.shape, field.shape)
+                        cupy.testing.assert_array_equal(
+                            result.asarray(), expected
+                            )
+
+    def test_wave_rhs(self):
+        field = PhysicalArray(self.grid, cupy.sin(self.grid.x[0]))
+        result = Wave().rhs(field.to_spectral())
+        self.assertIsInstance(result, SpectralArray)
+        self.assertIs(result.grid, self.grid)
+        cupy.testing.assert_allclose(
+            result.to_physical().asarray(), -cupy.cos(self.grid.x[0]),
+            rtol=1e-12, atol=1e-12
+            )
 
 
 class MPITemporaryDirectory(object):
@@ -69,10 +162,7 @@ class TestIO(unittest.TestCase):
                 s.checkpoint(checkpoint)
             s = SpectralArray(SpectralGrid(2**4), (3,))
             s.read_checkpoint(checkpoint)
-            nptest.assert_allclose(
-                numpy.asarray(s),
-                numpy.asarray(s.grid.k)
-                )
+            cupy.testing.assert_allclose(s.asarray(), s.grid.k)
 
     def test_mpi_write(self):
         """Test parallel writing
@@ -85,7 +175,4 @@ class TestIO(unittest.TestCase):
             if MPI.COMM_WORLD.rank == 0:
                 s = SpectralArray(SpectralGrid(2**4, comm=MPI.COMM_SELF), (3,))
                 s.read_checkpoint(checkpoint)
-            nptest.assert_allclose(
-                numpy.asarray(s),
-                numpy.asarray(s.grid.k)
-                )
+            cupy.testing.assert_allclose(s.asarray(), s.grid.k)
