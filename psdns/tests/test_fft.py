@@ -40,8 +40,9 @@ only run-times, not whether the results are correct.
 """
 import unittest
 
-import numpy
-from numpy import testing as nptest
+import cupy as numpy
+from cupy import testing as cptest
+import numpy as np
 
 from mpi4py import MPI
 try:
@@ -224,16 +225,16 @@ class TestSingleMode(tests.TestCase):
                                     (k, l, m), sdims, pdims
                                     )
                                 with self.subTest(type=typ, dir="forward"):
-                                    nptest.assert_almost_equal(
-                                        numpy.asarray(p.to_spectral()),
-                                        numpy.asarray(s)
+                                    cptest.assert_array_almost_equal(
+                                        p.to_spectral().asarray(),
+                                        s.asarray(), decimal=7
                                         )
                                 if typ == 'trunc':
                                     continue
                                 with self.subTest(type=typ, dir="backward"):
-                                    nptest.assert_almost_equal(
-                                        numpy.asarray(s.to_physical()),
-                                        numpy.asarray(p)
+                                    cptest.assert_array_almost_equal(
+                                        s.to_physical().asarray(),
+                                        p.asarray(), decimal=7
                                         )
 
 
@@ -310,8 +311,8 @@ class TestProperties(tests.TestCase):
                     p = random_physical_array(grid, shape)
                     restored = p.to_spectral().to_physical()
                     self.assertEqual(restored.shape, p.shape)
-                    numpy.testing.assert_allclose(
-                        restored._data, p._data,
+                    cptest.assert_allclose(
+                        restored.asarray(), p.asarray(),
                         rtol=1e-12, atol=1e-12
                         )
 
@@ -323,9 +324,9 @@ class TestProperties(tests.TestCase):
                 p = random_physical_array(SpectralGrid(sdims, pdims))
                 # Filter out unsupported spectral modes
                 p = p.to_spectral().to_physical()
-                nptest.assert_allclose(
-                    numpy.asarray(p.to_spectral().to_physical()),
-                    numpy.asarray(p)
+                cptest.assert_allclose(
+                    p.to_spectral().to_physical().asarray(),
+                    p.asarray()
                     )
 
     def test_round_trip2(self):
@@ -334,9 +335,9 @@ class TestProperties(tests.TestCase):
         for sdims, pdims in domains:
             with self.subTest(sdims=sdims, pdims=pdims):
                 s = random_spectral_array(SpectralGrid(sdims, pdims))
-                nptest.assert_allclose(
-                    numpy.asarray(s.to_physical().to_spectral()),
-                    numpy.asarray(s)
+                cptest.assert_allclose(
+                    s.to_physical().to_spectral().asarray(),
+                    s.asarray()
                     )
 
     def test_linear1(self):
@@ -348,9 +349,9 @@ class TestProperties(tests.TestCase):
                 p1 = random_physical_array(grid)
                 p2 = random_physical_array(grid)
                 a = grid.comm.bcast(numpy.random.rand(), root=0)
-                nptest.assert_allclose(
-                    numpy.asarray((p1+a*p2).to_spectral()),
-                    numpy.asarray(p1.to_spectral()+a*p2.to_spectral())
+                cptest.assert_allclose(
+                    (p1+a*p2).to_spectral().asarray(),
+                    (p1.to_spectral()+a*p2.to_spectral()).asarray()
                     )
 
     def test_linear2(self):
@@ -362,9 +363,9 @@ class TestProperties(tests.TestCase):
                 s1 = random_spectral_array(grid)
                 s2 = random_spectral_array(grid)
                 a = grid.comm.bcast(numpy.random.rand(), root=0)
-                nptest.assert_allclose(
-                    numpy.asarray((s1+a*s2).to_physical()),
-                    numpy.asarray(s1.to_physical()+a*s2.to_physical())
+                cptest.assert_allclose(
+                    (s1+a*s2).to_physical().asarray(),
+                    (s1.to_physical()+a*s2.to_physical()).asarray()
                     )
 
     def test_norm(self):
@@ -419,9 +420,9 @@ class TestProperties(tests.TestCase):
                         )
                 for i in range(3):
                     with self.subTest(vector_element=i):
-                        nptest.assert_almost_equal(
-                            numpy.asarray(p[i].to_spectral()),
-                            numpy.asarray(s[i])
+                        cptest.assert_array_almost_equal(
+                            p[i].to_spectral().asarray(),
+                            s[i].asarray(), decimal=7
                             )
 
     def test_vector_to_physical(self):
@@ -441,9 +442,9 @@ class TestProperties(tests.TestCase):
                         )
                 for i in range(3):
                     with self.subTest(vector_element=i):
-                        nptest.assert_almost_equal(
-                            numpy.asarray(s[i].to_physical()),
-                            numpy.asarray(p[i])
+                        cptest.assert_array_almost_equal(
+                            s[i].to_physical().asarray(),
+                            p[i].asarray(), decimal=7
                             )
 
 
@@ -472,7 +473,7 @@ class TestMPI4PyFFT(tests.TestCase):
                 fft = PFFT(
                     MPI.COMM_WORLD,
                     sdims,
-                    padding=numpy.asarray(pdims)/numpy.asarray(sdims),
+                    padding=np.asarray(pdims)/np.asarray(sdims),
                     axes=(0, 1, 2),
                     dtype=float,
                     grid=(-1,)
@@ -481,13 +482,13 @@ class TestMPI4PyFFT(tests.TestCase):
                     SpectralGrid(sdims, pdims, aliasing_strategy='mpi4py')
                     )
                 u = newDistArray(fft, False)
-                u[...] = p
+                u[...] = numpy.asnumpy(p.asarray())
                 u_hat = fft.forward(u, normalize=True)
                 s = p.to_spectral()
                 numpy.set_printoptions(linewidth=120, precision=2)
-                nptest.assert_allclose(
+                cptest.assert_allclose(
                     u_hat,
-                    numpy.asarray(s),
+                    s.asarray(),
                     )
 
     def test_mpi4py_fft_backward(self):
@@ -498,7 +499,7 @@ class TestMPI4PyFFT(tests.TestCase):
                 fft = PFFT(
                     MPI.COMM_WORLD,
                     sdims,
-                    padding=numpy.asarray(pdims)/numpy.asarray(sdims),
+                    padding=np.asarray(pdims)/np.asarray(sdims),
                     axes=(0, 1, 2),
                     dtype=float,
                     grid=(-1,)
@@ -507,9 +508,9 @@ class TestMPI4PyFFT(tests.TestCase):
                     SpectralGrid(sdims, pdims, aliasing_strategy='mpi4py')
                     )
                 u_hat = newDistArray(fft, True)
-                u_hat[...] = s
+                u_hat[...] = numpy.asnumpy(s.asarray())
                 u = fft.backward(u_hat, normalize=False)
-                nptest.assert_allclose(
+                cptest.assert_allclose(
                     u,
-                    numpy.asarray(s.to_physical())
+                    s.to_physical().asarray()
                     )

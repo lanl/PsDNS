@@ -10,6 +10,10 @@ decomposition.  :class:`PhysicalArray` and :class:`SpectralArray` are
 MPI distributed array classes that are grid aware, and provide methods
 to Fourier transform between them.
 
+Use field.asarray() to access the local CuPy array, sharing storage
+with the field. To copy the local data to a NumPy array on the host,
+use cupy.asnumpy(field.asarray()).
+
 The PDEs implemented in PsDNS make use of scalar, vector, and rank-2
 tensor field data.  To do this, the array classes allow for arbitrary
 rank tensor fields.  The dimensionality of a data array for a rank-n
@@ -291,9 +295,16 @@ class PhysicalArray(np.lib.mixins.NDArrayOperatorsMixin):
         #: The shape of the local data array
         self.shape = self._data.shape
 
-    def __array__(self, dtype=None):
-        """Return a view of the data as an :class:`numpy.ndarray`."""
-        return numpy.array(self._data, dtype, copy=False)
+    def __array__(self, dtype=None, copy=None):
+        """Reject implicit array conversion."""
+        raise TypeError(
+            "Use field.asarray() for the local CuPy array or "
+            "cupy.asnumpy(field.asarray()) for a NumPy copy."
+            )
+
+    def asarray(self):
+        """Return a view of the local CuPy array."""
+        return self._data.view()
 
     def __str__(self):
         return str(self._data)
@@ -469,8 +480,16 @@ class SpectralArray(np.lib.mixins.NDArrayOperatorsMixin):
         #: The shape of the local data array
         self.shape = self._data.shape
 
-    def __array__(self, dtype=None):
-        return numpy.array(self._data, dtype, copy=False)
+    def __array__(self, dtype=None, copy=None):
+        """Reject implicit array conversion."""
+        raise TypeError(
+            "Use field.asarray() for the local CuPy array or "
+            "cupy.asnumpy(field.asarray()) for a NumPy copy."
+            )
+
+    def asarray(self):
+        """Return a view of the local CuPy array."""
+        return self._data.view()
 
     def __str__(self):
         return str(self._data)
